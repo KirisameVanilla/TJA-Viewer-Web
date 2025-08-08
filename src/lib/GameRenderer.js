@@ -123,21 +123,12 @@ export class GameRenderer {
           strokeColor = "#ffaa00";
           break;
         case 5: // 小连打
-          color = "#ffff44";
-          radius = 20;
-          if (note.isRollActive) {
-            this.drawRollTrack(note, x, y, speed, tjaData);
-            shouldDrawNote = x >= hitLineX - 50;
-          }
+          this.drawRollNote(note, currentTime, speed, tjaData, false);
+          shouldDrawNote = false; // 不绘制圆形音符
           break;
         case 6: // 大连打
-          color = "#ffff22";
-          radius = 28;
-          strokeColor = "#ff8800";
-          if (note.isRollActive) {
-            this.drawRollTrack(note, x, y, speed, tjaData);
-            shouldDrawNote = x >= hitLineX - 50;
-          }
+          this.drawRollNote(note, currentTime, speed, tjaData, true);
+          shouldDrawNote = false; // 不绘制圆形音符
           break;
         case 7: // 气球
           color = "#ff44ff";
@@ -240,6 +231,119 @@ export class GameRenderer {
 
     if (symbol && radius > 18) {
       this.ctx.fillText(symbol, x, y);
+    }
+  }
+
+  // 绘制连打长条音符
+  drawRollNote(rollNote, currentTime, speed, tjaData, isBig) {
+    const y = 100;
+    const hitLineX = 120;
+    
+    // 找到对应的结束音符
+    let endTime = rollNote.time + 2; // 默认2秒
+    for (let i = 0; i < tjaData.notes.length; i++) {
+      if (tjaData.notes[i].time > rollNote.time && tjaData.notes[i].type === 8) {
+        endTime = tjaData.notes[i].time;
+        break;
+      }
+    }
+    
+    const startX = this.calculateNotePosition(rollNote.time, currentTime, speed, tjaData);
+    const endX = this.calculateNotePosition(endTime, currentTime, speed, tjaData);
+    
+    // 计算可见部分的起始和结束位置
+    const trackStartX = Math.max(80, Math.min(startX, this.canvas.width - 80));
+    const trackEndX = Math.min(this.canvas.width - 80, Math.max(endX, 80));
+    
+    if (trackEndX <= trackStartX) return;
+    
+    // 长条的颜色和尺寸
+    const height = isBig ? 40 : 30;
+    const color = isBig ? "#ffff22" : "#ffff44";
+    const strokeColor = isBig ? "#ff8800" : "#ffcc00";
+    
+    // 绘制长条主体
+    this.ctx.fillStyle = color;
+    this.ctx.fillRect(trackStartX, y - height/2, trackEndX - trackStartX, height);
+    
+    // 绘制长条边框
+    this.ctx.strokeStyle = strokeColor;
+    this.ctx.lineWidth = 3;
+    this.ctx.strokeRect(trackStartX, y - height/2, trackEndX - trackStartX, height);
+    
+    // GOGO模式效果
+    if (rollNote.gogo) {
+      const flash = Math.sin(currentTime * 10) * 0.3 + 0.7;
+      this.ctx.strokeStyle = `rgba(255, 255, 0, ${flash})`;
+      this.ctx.lineWidth = 5;
+      this.ctx.strokeRect(trackStartX - 2, y - height/2 - 2, trackEndX - trackStartX + 4, height + 4);
+    }
+    
+    // 绘制长条内部的装饰线条
+    this.ctx.strokeStyle = "rgba(255, 255, 255, 0.3)";
+    this.ctx.lineWidth = 1;
+    for (let i = 0; i < 3; i++) {
+      const lineY = y - height/2 + (i + 1) * height / 4;
+      this.ctx.beginPath();
+      this.ctx.moveTo(trackStartX, lineY);
+      this.ctx.lineTo(trackEndX, lineY);
+      this.ctx.stroke();
+    }
+    
+    // 绘制起始圆形（如果可见）
+    if (startX >= 80 && startX <= this.canvas.width - 80) {
+      const radius = isBig ? 25 : 20;
+      
+      this.ctx.fillStyle = color;
+      this.ctx.beginPath();
+      this.ctx.arc(startX, y, radius, 0, 2 * Math.PI);
+      this.ctx.fill();
+      
+      this.ctx.strokeStyle = strokeColor;
+      this.ctx.lineWidth = 3;
+      this.ctx.beginPath();
+      this.ctx.arc(startX, y, radius, 0, 2 * Math.PI);
+      this.ctx.stroke();
+      
+      // 绘制连打符号
+      this.ctx.fillStyle = "#ffffff";
+      this.ctx.font = "12px Arial";
+      this.ctx.textAlign = "center";
+      this.ctx.textBaseline = "middle";
+      this.ctx.fillText("连", startX, y);
+    }
+    
+    // 绘制结束圆形（如果可见）
+    if (endX >= 80 && endX <= this.canvas.width - 80) {
+      const radius = 15;
+      
+      this.ctx.fillStyle = "#888888";
+      this.ctx.beginPath();
+      this.ctx.arc(endX, y, radius, 0, 2 * Math.PI);
+      this.ctx.fill();
+      
+      this.ctx.strokeStyle = "#ffffff";
+      this.ctx.lineWidth = 2;
+      this.ctx.beginPath();
+      this.ctx.arc(endX, y, radius, 0, 2 * Math.PI);
+      this.ctx.stroke();
+    }
+    
+    // 显示连打次数（如果连打进行中）
+    if (rollNote.isRollActive) {
+      const rollId = `roll_${rollNote.time}`;
+      const hitCount = this.gameState.rollHitCounts.get(rollId) || 0;
+      
+      if (hitCount > 0) {
+        this.ctx.fillStyle = "#ffffff";
+        this.ctx.font = "bold 14px Arial";
+        this.ctx.textAlign = "center";
+        this.ctx.textBaseline = "middle";
+        
+        // 在长条中间显示连击数
+        const centerX = (trackStartX + trackEndX) / 2;
+        this.ctx.fillText(`${hitCount}连`, centerX, y - height/2 - 15);
+      }
     }
   }
 
