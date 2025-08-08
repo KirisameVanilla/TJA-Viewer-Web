@@ -15,6 +15,8 @@
   let hitNotes = [] // 存储被击中的音符，用于击飞动画
   let noteSpeed = 1.0 // 音符流动速度倍率，1.0为默认速度
   let measureLines = [] // 存储小节线信息
+  let tjaCourses = [] // 存储所有难度的谱面数据
+  let selectedCourse = '' // 当前选择的难度
 
   // zip 相关
   let tjaFiles = []
@@ -126,10 +128,40 @@
     loadingStatus = '正在加载 TJA 谱面...'
     try {
       const text = await zipFileMap[selectedTja].async('text')
-      tjaData = parseTJA(text)
-      loadingStatus = '谱面加载完成'
+      tjaCourses = parseTJA(text)
+      
+      if (tjaCourses.length > 0) {
+        // 默认选择第一个难度
+        selectedCourse = tjaCourses[0].name
+        tjaData = tjaCourses[0]
+        loadingStatus = `谱面加载完成，找到 ${tjaCourses.length} 个难度`
+      } else {
+        loadingStatus = 'TJA 文件中没有找到有效的谱面数据'
+        tjaData = null
+      }
     } catch (e) {
       loadingStatus = 'TJA 加载失败: ' + e
+      tjaCourses = []
+      tjaData = null
+    }
+  }
+
+  function handleCourseChange() {
+    if (!tjaCourses || tjaCourses.length === 0) return
+    
+    const course = tjaCourses.find(c => c.name === selectedCourse)
+    if (course) {
+      tjaData = course
+      // 重置播放状态
+      if (audioElement) {
+        audioElement.pause()
+        audioElement.currentTime = 0
+        currentTime = 0
+        isPlaying = false
+        stopAnimation()
+      }
+      resetNoteStates()
+      setupCanvas()
     }
   }
 
@@ -193,48 +225,112 @@
 
   function parseTJA(text) {
     const lines = text.split('\n')
-    const metadata = {}
-    const noteData = []
-    const measureLineData = [] // 存储小节线位置
+    const globalMetadata = {}
+    const courses = []
+    
+    let currentCourse = null
     let inNoteSection = false
     let currentBPM = 150
     let currentTime = 0
     let gogoMode = false
     let offset = 0
-    let measureNumber = 0 // 当前小节数
+    let measureNumber = 0
     
-    for (let line of lines) {
-      line = line.trim()
+    for (let i = 0; i < lines.length; i++) {
+      let line = lines[i].trim()
       
       // 跳过空行和注释
       if (!line || line.startsWith('//')) continue
       
-      // 解析元数据
-      if (line.includes(':') && !inNoteSection) {
+      // 解析全局元数据（在任何COURSE之前）
+      if (line.includes(':') && !inNoteSection && !currentCourse) {
         const [key, value] = line.split(':', 2)
-        metadata[key] = value.trim()
+        globalMetadata[key] = value.trim()
         if (key === 'BPM') {
           currentBPM = parseFloat(value) || 150
         }
         if (key === 'OFFSET') {
           offset = parseFloat(value) || 0
         }
+        continue
+      }
+      
+      // 检测新的难度开始
+      if (line.startsWith('COURSE:')) {
+        // 如果之前有未完成的难度，先保存它
+        if (currentCourse && inNoteSection) {
+          courses.push(currentCourse)
+        }
+        
+        const courseName = line.split(':', 2)[1].trim()
+        currentCourse = {
+          name: courseName,
+          metadata: {...globalMetadata}, // 继承全局元数据
+          notes: [],
+          measureLines: [],
+          bpm: currentBPM,
+          offset: offset,
+          totalTime: 0
+        }
+        
+        // 重置状态
+        inNoteSection = false
+        currentTime = -offset
+        gogoMode = false
+        measureNumber = 0
+        continue
+      }
+      
+      // 如果没有当前难度但遇到了#START，创建默认难度
+      if (line === '#START' && !currentCourse) {
+        currentCourse = {
+          name: 'Unknown',
+          metadata: {...globalMetadata},
+          notes: [],
+          measureLines: [],
+          bpm: currentBPM,
+          offset: offset,
+          totalTime: 0
+        }
+        currentTime = -offset
+        gogoMode = false
+        measureNumber = 0
+      }
+      
+      if (!currentCourse) continue
+      
+      // 解析当前难度的元数据
+      if (line.includes(':') && !inNoteSection) {
+        const [key, value] = line.split(':', 2)
+        currentCourse.metadata[key] = value.trim()
+        if (key === 'BPM') {
+          currentCourse.bpm = parseFloat(value) || 150
+          currentBPM = currentCourse.bpm
+        }
+        if (key === 'OFFSET') {
+          currentCourse.offset = parseFloat(value) || 0
+          offset = currentCourse.offset
+        }
+        continue
       }
       
       // 开始音符部分
       if (line === '#START') {
         inNoteSection = true
-        // OFFSET表示音符相对于音频的时间偏移
-        // 负值表示音符比音频提前，正值表示延后
-        currentTime = -offset // 注意这里取负值，因为我们需要调整音符时间
-        console.log('谱面开始时间:', currentTime, 'OFFSET:', offset)
+        currentTime = -offset
+        console.log('难度', currentCourse.name, '开始时间:', currentTime, 'OFFSET:', offset)
         continue
       }
       
       // 结束音符部分
       if (line === '#END') {
-        break
+        inNoteSection = false
+        courses.push(currentCourse)
+        currentCourse = null
+        continue
       }
+      
+      if (!inNoteSection || !currentCourse) continue
       
       // GOGO模式
       if (line === '#GOGOSTART') {
@@ -252,16 +348,17 @@
         const newBPM = parseFloat(line.replace('#BPMCHANGE ', ''))
         if (!isNaN(newBPM)) {
           currentBPM = newBPM
+          currentCourse.bpm = newBPM
         }
         continue
       }
       
       // 解析音符行
-      if (inNoteSection && line.includes(',')) {
+      if (line.includes(',')) {
         const noteLine = line.replace(',', '').replace(/\/\/.*/, '').trim()
         
         // 在每个小节开始时记录小节线位置
-        measureLineData.push({
+        currentCourse.measureLines.push({
           time: currentTime,
           measure: measureNumber,
           bpm: currentBPM
@@ -291,15 +388,14 @@
         }
         
         // 计算每个音符位置的时间间隔
-        // TJA中通常一行代表一个小节（4拍），音符数量决定了细分程度
         const measureDuration = (60 / currentBPM) * 4 // 一个小节的总时长
         const noteInterval = measureDuration / noteLine.length // 每个音符的时间间隔
         
-        for (let i = 0; i < noteLine.length; i++) {
-          const noteType = parseInt(noteLine[i])
+        for (let j = 0; j < noteLine.length; j++) {
+          const noteType = parseInt(noteLine[j])
           if (noteType > 0 && noteType <= 8) {
-            const noteTime = currentTime + (i * noteInterval)
-            noteData.push({
+            const noteTime = currentTime + (j * noteInterval)
+            currentCourse.notes.push({
               time: noteTime,
               type: noteType,
               gogo: gogoMode,
@@ -314,21 +410,31 @@
       }
     }
     
-    // 按时间排序音符
-    noteData.sort((a, b) => a.time - b.time)
-    
-    console.log('解析完成，总音符数:', noteData.length)
-    console.log('小节线数量:', measureLineData.length)
-    console.log('前几个音符时间:', noteData.slice(0, 5).map(n => n.time))
-    
-    return {
-      metadata,
-      notes: noteData,
-      measureLines: measureLineData,
-      bpm: currentBPM,
-      totalTime: currentTime,
-      offset: offset
+    // 如果最后还有未完成的难度，保存它
+    if (currentCourse && inNoteSection) {
+      courses.push(currentCourse)
     }
+    
+    // 对每个难度的音符按时间排序
+    courses.forEach(course => {
+      course.notes.sort((a, b) => a.time - b.time)
+      // 计算每个难度的总时长
+      if (course.notes.length > 0) {
+        const lastNoteTime = course.notes[course.notes.length - 1].time
+        const lastMeasureTime = course.measureLines.length > 0 ? 
+          course.measureLines[course.measureLines.length - 1].time : 0
+        course.totalTime = Math.max(lastNoteTime, lastMeasureTime) + 4 // 添加4秒缓冲
+      } else {
+        course.totalTime = 0
+      }
+    })
+    
+    console.log('解析完成，找到', courses.length, '个难度:')
+    courses.forEach((course, index) => {
+      console.log(`难度 ${index + 1}: ${course.name}, 音符数: ${course.notes.length}`)
+    })
+    
+    return courses
   }
 
   function setupCanvas() {
@@ -837,6 +943,17 @@
     </select>
     <button on:click={handleFileSelect} disabled={!selectedTja || !selectedOgg}>加载</button>
   </div>
+
+  {#if tjaCourses.length > 1}
+    <div style="margin-bottom: 1em;">
+      <label for="course-select">选择难度：</label>
+      <select id="course-select" bind:value={selectedCourse} on:change={handleCourseChange}>
+        {#each tjaCourses as course}
+          <option value={course.name}>{course.name} (Level: {course.metadata.LEVEL || 'N/A'})</option>
+        {/each}
+      </select>
+    </div>
+  {/if}
 
   {#if tjaData}
     <div class="song-info">
