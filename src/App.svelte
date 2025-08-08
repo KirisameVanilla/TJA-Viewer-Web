@@ -12,6 +12,7 @@
   let notes = []
   let visibleNotes = []
   let gameCanvas
+  let hitNotes = [] // 存储被击中的音符，用于击飞动画
 
   // zip 相关
   let tjaFiles = []
@@ -335,7 +336,66 @@
     
     visibleNotes = tjaData.notes.filter(note => 
       note.time >= currentTime - lookBehind && 
-      note.time <= currentTime + lookAhead
+      note.time <= currentTime + lookAhead &&
+      !note.hasBeenHit // 排除已经被击中的音符
+    )
+    
+    // 检查是否有音符经过判定线，触发击飞效果
+    const hitLineX = 120
+    const speed = 300
+    
+    tjaData.notes.forEach(note => {
+      const timeDiff = note.time - currentTime
+      const x = hitLineX + (timeDiff * speed)
+      
+      // 当音符刚好经过判定线时（在很小的时间窗口内）
+      if (!note.hasBeenHit && Math.abs(timeDiff) < 0.05) {
+        note.hasBeenHit = true
+        triggerHitEffect(note, x, 100) // 100是y坐标
+      }
+    })
+    
+    // 更新击飞中的音符动画
+    updateHitNotes()
+  }
+
+  function triggerHitEffect(note, x, y) {
+    const hitNote = {
+      ...note,
+      x: x,
+      y: y,
+      vx: -400 - 0.8 * 80000, // 向左飞行的速度（-400到-600px/s）
+      vy: -300 - 0.8 * 56000, // 向上飞行的速度（-300到-400px/s）
+      gravity: 600, // 重力加速度
+      opacity: 1.0,
+      fadeSpeed: 20, // 透明度减少速度（稍微慢一点，让飞行过程更清晰）
+      startTime: performance.now()
+    }
+    hitNotes.push(hitNote)
+  }
+
+  function updateHitNotes() {
+    const now = performance.now()
+    
+    // 更新每个击飞音符的位置和状态
+    hitNotes.forEach(hitNote => {
+      const deltaTime = (now - hitNote.startTime) / 1000 // 转换为秒
+      
+      // 更新位置（抛物线运动）
+      hitNote.x += hitNote.vx * deltaTime * 0.016 // 假设60fps
+      hitNote.y += hitNote.vy * deltaTime * 0.016
+      hitNote.vy += hitNote.gravity * deltaTime * 0.016 // 重力影响
+      
+      // 更新透明度
+      hitNote.opacity -= hitNote.fadeSpeed * deltaTime * 0.016
+      
+      // 更新开始时间用于下一帧计算
+      hitNote.startTime = now
+    })
+    
+    // 移除已经完全透明或飞出屏幕的音符
+    hitNotes = hitNotes.filter(hitNote => 
+      hitNote.opacity > 0 && hitNote.x > -100 && hitNote.y < 300
     )
   }
 
@@ -501,6 +561,9 @@
       }
     })
     
+    // 绘制击飞中的音符
+    drawHitNotes(ctx)
+    
     // 绘制当前时间指示器
     ctx.fillStyle = '#ff0000'
     ctx.font = '14px Arial'
@@ -513,6 +576,120 @@
     }
   }
 
+  function drawHitNotes(ctx) {
+    // 绘制所有击飞中的音符
+    hitNotes.forEach(hitNote => {
+      const x = hitNote.x
+      const y = hitNote.y
+      let radius = 20
+      let color = '#888888'
+      let strokeColor = '#ffffff'
+      
+      // 根据音符类型设置样式（与原音符相同）
+      switch(hitNote.type) {
+        case 1: // 咚 - 红色
+          color = '#ff4444'
+          radius = 22
+          break
+        case 2: // 咔 - 蓝色
+          color = '#4444ff'
+          radius = 22
+          break
+        case 3: // 大咚 - 大红色
+          color = '#ff2222'
+          radius = 30
+          strokeColor = '#ffaa00'
+          break
+        case 4: // 大咔 - 大蓝色
+          color = '#2222ff'
+          radius = 30
+          strokeColor = '#ffaa00'
+          break
+        case 5: // 小连打 - 黄色
+          color = '#ffff44'
+          radius = 20
+          break
+        case 6: // 大连打 - 大黄色
+          color = '#ffff22'
+          radius = 28
+          strokeColor = '#ff8800'
+          break
+        case 7: // 气球 - 粉色
+          color = '#ff44ff'
+          radius = 25
+          break
+      }
+      
+      // 应用透明度
+      const alpha = Math.max(0, Math.min(1, hitNote.opacity))
+      
+      // 解析颜色并添加透明度
+      const addAlpha = (colorStr, alpha) => {
+        if (colorStr.startsWith('#')) {
+          const r = parseInt(colorStr.slice(1, 3), 16)
+          const g = parseInt(colorStr.slice(3, 5), 16)
+          const b = parseInt(colorStr.slice(5, 7), 16)
+          return `rgba(${r}, ${g}, ${b}, ${alpha})`
+        }
+        return colorStr
+      }
+      
+      // 绘制音符主体（带透明度）
+      ctx.fillStyle = addAlpha(color, alpha)
+      ctx.beginPath()
+      ctx.arc(x, y, radius, 0, 2 * Math.PI)
+      ctx.fill()
+      
+      // 绘制音符边框（带透明度）
+      ctx.strokeStyle = addAlpha(strokeColor, alpha)
+      ctx.lineWidth = 3
+      ctx.beginPath()
+      ctx.arc(x, y, radius, 0, 2 * Math.PI)
+      ctx.stroke()
+      
+      // 绘制音符内部标记（带透明度）
+      ctx.fillStyle = `rgba(255, 255, 255, ${alpha})`
+      ctx.font = '12px Arial'
+      ctx.textAlign = 'center'
+      ctx.textBaseline = 'middle'
+      
+      let symbol = ''
+      switch(hitNote.type) {
+        case 1:
+        case 3:
+          symbol = '咚'
+          break
+        case 2:
+        case 4:
+          symbol = '咔'
+          break
+        case 5:
+        case 6:
+          symbol = '连'
+          break
+        case 7:
+          symbol = '气'
+          break
+      }
+      
+      if (symbol && radius > 18) {
+        ctx.fillText(symbol, x, y)
+      }
+    })
+  }
+
+  function resetNoteStates() {
+    // 重置所有音符的击中状态
+    if (tjaData && tjaData.notes) {
+      tjaData.notes.forEach(note => {
+        note.hasBeenHit = false
+      })
+    }
+    
+    // 清空击飞中的音符数组
+    hitNotes = []
+  }
+
   function togglePlay() {
     if (!audioElement || !isLoaded) return
     
@@ -521,6 +698,9 @@
       isPlaying = false
       stopAnimation()
     } else {
+      // 重置所有音符的击中状态和击飞动画
+      resetNoteStates()
+      
       audioElement.play().then(() => {
         isPlaying = true
         startAnimation()
@@ -544,6 +724,10 @@
     
     audioElement.currentTime = Math.max(0, Math.min(newTime, duration))
     currentTime = audioElement.currentTime
+    
+    // 重置音符状态，因为时间改变了
+    resetNoteStates()
+    
     updateVisibleNotes()
     drawNotes()
   }
