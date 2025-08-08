@@ -269,6 +269,15 @@
     let offset = 0;
     let measureNumber = 0;
 
+    // 计算基于当前拍子的小节时长
+    function getMeasureDuration(bpm, measureSignature = { numerator: 4, denominator: 4 }) {
+      // 基础4/4拍小节时长：(60 / BPM) * 4
+      // 对于A/B拍：(60 / BPM) * (A * 4 / B)
+      const baseBeatDuration = 60 / bpm; // 一拍的时长
+      const beatsPerMeasure = (measureSignature.numerator * 4) / measureSignature.denominator;
+      return baseBeatDuration * beatsPerMeasure;
+    }
+
     for (let i = 0; i < lines.length; i++) {
       let line = lines[i].trim();
 
@@ -292,6 +301,8 @@
           bpm: currentBPM,
           offset: offset,
           totalTime: 0,
+          measureSignature: { numerator: 4, denominator: 4 }, // 默认4/4拍
+          scrollChanges: [], // 滚动速度变更记录
         };
 
         // 重置状态
@@ -325,6 +336,8 @@
           bpm: currentBPM,
           offset: offset,
           totalTime: 0,
+          measureSignature: { numerator: 4, denominator: 4 }, // 默认4/4拍
+          scrollChanges: [], // 滚动速度变更记录
         };
         currentTime = -offset;
         gogoMode = false;
@@ -388,6 +401,39 @@
         continue;
       }
 
+      // 拍子变更 #MEASURE A/B 表示 B分A拍子
+      if (line.startsWith("#MEASURE ")) {
+        const measureValue = line.replace("#MEASURE ", "").trim();
+        const parts = measureValue.split("/");
+        if (parts.length === 2) {
+          const numerator = parseInt(parts[0]);
+          const denominator = parseInt(parts[1]);
+          if (!isNaN(numerator) && !isNaN(denominator)) {
+            // 记录拍子变更，影响小节时长计算
+            currentCourse.measureSignature = { numerator, denominator };
+            console.log(`拍子变更: ${numerator}/${denominator}`);
+          }
+        }
+        continue;
+      }
+
+      // 滚动速度变更 #SCROLL 0.5 表示速度变为0.5倍
+      if (line.startsWith("#SCROLL ")) {
+        const scrollValue = parseFloat(line.replace("#SCROLL ", ""));
+        if (!isNaN(scrollValue)) {
+          // 记录滚动速度变更点
+          if (!currentCourse.scrollChanges) {
+            currentCourse.scrollChanges = [];
+          }
+          currentCourse.scrollChanges.push({
+            time: currentTime,
+            scrollSpeed: scrollValue
+          });
+          console.log(`滚动速度变更: ${scrollValue}x at time ${currentTime}`);
+        }
+        continue;
+      }
+
       // 解析音符行
       if (line.includes(",")) {
         const noteLine = line
@@ -407,7 +453,7 @@
           const specialNote = parseInt(noteLine);
           if (specialNote === 7) {
             // 气球音符（单独出现时作为小节标记）
-            const measureDuration = (60 / currentBPM) * 4;
+            const measureDuration = getMeasureDuration(currentBPM, currentCourse.measureSignature);
             currentTime += measureDuration;
             measureNumber++;
             continue;
@@ -419,14 +465,14 @@
 
         if (noteLine.length === 0) {
           // 空小节，增加一个小节的时间
-          const measureDuration = (60 / currentBPM) * 4; // 一个4/4拍的小节时长
+          const measureDuration = getMeasureDuration(currentBPM, currentCourse.measureSignature);
           currentTime += measureDuration;
           measureNumber++;
           continue;
         }
 
         // 计算每个音符位置的时间间隔
-        const measureDuration = (60 / currentBPM) * 4; // 一个小节的总时长
+        const measureDuration = getMeasureDuration(currentBPM, currentCourse.measureSignature); // 基于当前拍子的小节时长
         const noteInterval = measureDuration / noteLine.length; // 每个音符的时间间隔
 
         for (let j = 0; j < noteLine.length; j++) {
@@ -513,10 +559,10 @@
       const speed = 300 * noteSpeed; // 应用速度倍率
 
       tjaData.notes.forEach((note) => {
-        const timeDiff = note.time - currentTime;
-        const x = hitLineX + timeDiff * speed;
+        const x = calculateNotePosition(note.time, currentTime, speed);
 
         // 根据速度调整击飞判定的时间窗口，速度越快窗口越小
+        const timeDiff = note.time - currentTime;
         const hitWindow = 0.05 / noteSpeed;
 
         // 当音符刚好经过判定线时（在调整后的时间窗口内）
@@ -534,6 +580,29 @@
     if (isPlayMode) {
       checkMissedNotes();
     }
+  }
+
+  // 计算考虑滚动速度变化的音符X位置
+  function calculateNotePosition(noteTime, currentTime, baseSpeed) {
+    if (!tjaData || !tjaData.scrollChanges || tjaData.scrollChanges.length === 0) {
+      // 没有滚动速度变化，使用基础计算
+      const timeDiff = noteTime - currentTime;
+      return 120 + timeDiff * baseSpeed; // 120是判定线位置
+    }
+
+    // 找到影响这个音符的滚动速度变化
+    let effectiveScrollSpeed = 1.0; // 默认滚动速度
+    let lastChangeTime = -Infinity;
+
+    for (const scrollChange of tjaData.scrollChanges) {
+      if (scrollChange.time <= noteTime && scrollChange.time > lastChangeTime) {
+        effectiveScrollSpeed = scrollChange.scrollSpeed;
+        lastChangeTime = scrollChange.time;
+      }
+    }
+
+    const timeDiff = noteTime - currentTime;
+    return 120 + timeDiff * baseSpeed * effectiveScrollSpeed;
   }
 
   function triggerHitEffect(note, x, y) {
@@ -696,8 +765,7 @@
       closestNote.hasBeenHit = true;
       
       // 触发击飞效果
-      const timeDiff = closestNote.time - currentTime;
-      const x = hitLineX + (timeDiff * speed);
+      const x = calculateNotePosition(closestNote.time, currentTime, speed);
       triggerHitEffect(closestNote, x, 100);
       
     } else {
@@ -787,8 +855,7 @@
     ctx.strokeStyle = "#666666";
     ctx.lineWidth = 1;
     measureLines.forEach((measureLine) => {
-      const timeDiff = measureLine.time - currentTime;
-      const x = hitLineX + timeDiff * speed;
+      const x = calculateNotePosition(measureLine.time, currentTime, speed);
 
       // 只绘制在屏幕内的小节线
       if (x >= 80 && x <= width - 80) {
@@ -807,8 +874,7 @@
 
     // 绘制音符
     visibleNotes.forEach((note) => {
-      const timeDiff = note.time - currentTime;
-      const x = hitLineX + timeDiff * speed;
+      const x = calculateNotePosition(note.time, currentTime, speed);
       const y = 100;
 
       // 只绘制在屏幕内的音符
