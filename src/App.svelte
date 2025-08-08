@@ -24,6 +24,7 @@
   let loadingStatus = "正在加载...";
   let tjaCourses = [];
   let selectedCourse = "";
+  let selectedBranch = "normal"; // 新增分支选择状态
   let isPlayMode = false;
   let volume = 0.7;
   let noteSpeed = 1.0;
@@ -134,7 +135,8 @@
 
       if (tjaCourses.length > 0) {
         selectedCourse = tjaCourses[0].name;
-        tjaData = tjaCourses[0];
+        selectedBranch = "normal"; // 重置分支选择
+        updateTjaData();
         loadingStatus = `谱面加载完成，找到 ${tjaCourses.length} 个难度`;
       } else {
         loadingStatus = "TJA 文件中没有找到有效的谱面数据";
@@ -171,25 +173,47 @@
     }
   }
 
-  // 难度切换
-  function handleCourseChange() {
+  // 更新TJA数据（根据选择的难度和分支）
+  function updateTjaData() {
     if (!tjaCourses || tjaCourses.length === 0) return;
 
     const course = tjaCourses.find((c) => c.name === selectedCourse);
     if (course) {
-      tjaData = course;
-      
-      if (audioElement) {
-        audioElement.pause();
-        audioElement.currentTime = 0;
-        currentTime = 0;
-        isPlaying = false;
-        stopAnimation();
-      }
-      
-      gameState.resetNoteStates(tjaData);
-      setupCanvas();
+      // 使用TJAParser的新方法获取带分支的数据
+      tjaData = TJAParser.getCourseWithBranch(course, selectedBranch);
     }
+  }
+
+  // 难度切换
+  function handleCourseChange() {
+    updateTjaData();
+    
+    if (audioElement) {
+      audioElement.pause();
+      audioElement.currentTime = 0;
+      currentTime = 0;
+      isPlaying = false;
+      stopAnimation();
+    }
+    
+    gameState.resetNoteStates(tjaData);
+    setupCanvas();
+  }
+
+  // 分支切换
+  function handleBranchChange() {
+    updateTjaData();
+    
+    if (audioElement) {
+      audioElement.pause();
+      audioElement.currentTime = 0;
+      currentTime = 0;
+      isPlaying = false;
+      stopAnimation();
+    }
+    
+    gameState.resetNoteStates(tjaData);
+    setupCanvas();
   }
 
   // 设置Canvas
@@ -325,11 +349,13 @@
     bind:selectedOgg
     {tjaCourses}
     bind:selectedCourse
+    bind:selectedBranch
     {isPlayMode}
     bind:volume
     bind:noteSpeed
     onFileSelect={handleFileSelect}
     onCourseChange={handleCourseChange}
+    onBranchChange={handleBranchChange}
     onTogglePlayMode={togglePlayMode}
     onVolumeChange={handleVolumeChange}
     onSpeedChange={handleSpeedChange}

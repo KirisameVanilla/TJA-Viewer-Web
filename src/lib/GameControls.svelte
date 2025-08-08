@@ -5,8 +5,10 @@
   export let selectedOgg = "";
   export let tjaCourses = [];
   export let selectedCourse = "";
+  export let selectedBranch = "normal"; // 新增分支选择
   export let onFileSelect;
   export let onCourseChange;
+  export let onBranchChange; // 新增分支切换回调
   export let isPlayMode = false;
   export let onTogglePlayMode;
   export let volume = 0.7;
@@ -61,6 +63,22 @@
             {course.name} (Level: {course.metadata.LEVEL || "N/A"})
           </option>
         {/each}
+      </select>
+    </div>
+  {/if}
+
+  <!-- 分支选择 -->
+  {#if tjaCourses.length > 0 && tjaCourses.find(c => c.name === selectedCourse)?.hasBranch}
+    <div class="branch-selection">
+      <label for="branch-select">选择分支：</label>
+      <select
+        id="branch-select"
+        bind:value={selectedBranch}
+        on:change={onBranchChange}
+      >
+        <option value="easy">Easy (简单)</option>
+        <option value="normal">Normal (普通)</option>
+        <option value="master">Master (达人)</option>
       </select>
     </div>
   {/if}
@@ -248,6 +266,7 @@
     
     .file-selection,
     .course-selection,
+    .branch-selection,
     .game-settings {
       flex-direction: column;
       align-items: stretch;

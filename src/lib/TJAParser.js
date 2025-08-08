@@ -25,6 +25,17 @@ export class TJAParser {
     let gogoMode = false;
     let offset = 0;
     let measureNumber = 0;
+    
+    // 分歧相关状态
+    let inBranchSection = false;
+    let branchStartTime = 0;
+    let branchStartMeasure = 0; // 分歧开始时的小节号
+    let currentBranch = 'normal'; // 默认分支
+    let branchNotes = {
+      easy: [],
+      normal: [],
+      master: []
+    };
 
     // 计算基于当前拍子的小节时长
     function getMeasureDuration(bpm, measureSignature = { numerator: 4, denominator: 4 }) {
@@ -58,12 +69,29 @@ export class TJAParser {
           totalTime: 0,
           measureSignature: { numerator: 4, denominator: 4 },
           scrollChanges: [],
+          hasBranch: false,
+          branches: {
+            easy: { notes: [], measureLines: [] },
+            normal: { notes: [], measureLines: [] },
+            master: { notes: [], measureLines: [] }
+          }
         };
 
         inNoteSection = false;
         currentTime = -offset;
         gogoMode = false;
         measureNumber = 0;
+        
+        // 重置分歧相关状态
+        inBranchSection = false;
+        branchStartTime = 0;
+        branchStartMeasure = 0;
+        currentBranch = 'normal';
+        branchNotes = {
+          easy: [],
+          normal: [],
+          master: []
+        };
         continue;
       }
 
@@ -92,10 +120,27 @@ export class TJAParser {
           totalTime: 0,
           measureSignature: { numerator: 4, denominator: 4 },
           scrollChanges: [],
+          hasBranch: false,
+          branches: {
+            easy: { notes: [], measureLines: [] },
+            normal: { notes: [], measureLines: [] },
+            master: { notes: [], measureLines: [] }
+          }
         };
         currentTime = -offset;
         gogoMode = false;
         measureNumber = 0;
+        
+        // 重置分歧相关状态
+        inBranchSection = false;
+        branchStartTime = 0;
+        branchStartMeasure = 0;
+        currentBranch = 'normal';
+        branchNotes = {
+          easy: [],
+          normal: [],
+          master: []
+        };
       }
 
       if (!currentCourse) continue;
@@ -133,6 +178,85 @@ export class TJAParser {
       }
 
       if (!inNoteSection || !currentCourse) continue;
+
+      // 分歧开始
+      if (line.startsWith("#BRANCHSTART")) {
+        inBranchSection = true;
+        branchStartTime = currentTime;
+        branchStartMeasure = measureNumber;
+        currentCourse.hasBranch = true;
+        currentBranch = 'normal'; // 默认开始分支
+        
+        // 重置分歧音符存储，为每个分支记录起始时间
+        branchNotes = {
+          easy: [],
+          normal: [],
+          master: [],
+          easy_measures: [],
+          normal_measures: [],
+          master_measures: []
+        };
+        
+        console.log(`分歧开始 at time ${currentTime}, measure ${measureNumber}`);
+        continue;
+      }
+
+      // 分歧结束
+      if (line === "#BRANCHEND") {
+        if (inBranchSection) {
+          // 找出所有分支中最长的时间，作为分歧结束后的时间点
+          let maxBranchEndTime = branchStartTime;
+          ['easy', 'normal', 'master'].forEach(branch => {
+            if (branchNotes[branch] && branchNotes[branch].length > 0) {
+              const lastNote = branchNotes[branch][branchNotes[branch].length - 1];
+              maxBranchEndTime = Math.max(maxBranchEndTime, lastNote.time);
+              currentCourse.branches[branch].notes.push(...branchNotes[branch]);
+            }
+            if (branchNotes[branch + '_measures'] && branchNotes[branch + '_measures'].length > 0) {
+              const lastMeasure = branchNotes[branch + '_measures'][branchNotes[branch + '_measures'].length - 1];
+              maxBranchEndTime = Math.max(maxBranchEndTime, lastMeasure.time);
+              currentCourse.branches[branch].measureLines.push(...branchNotes[branch + '_measures']);
+            }
+          });
+          
+          // 更新主时间线到分歧结束点
+          currentTime = maxBranchEndTime;
+        }
+        inBranchSection = false;
+        currentBranch = 'normal';
+        branchNotes = {
+          easy: [],
+          normal: [],
+          master: []
+        };
+        console.log(`分歧结束 at time ${currentTime}`);
+        continue;
+      }
+
+      // 分歧难度标记
+      if (inBranchSection) {
+        if (line === "#E") {
+          currentBranch = 'easy';
+          currentTime = branchStartTime; // 重置时间到分歧开始点
+          measureNumber = branchStartMeasure; // 重置小节计数到分歧开始点
+          console.log(`切换到Easy分支 at time ${currentTime}, measure ${measureNumber}`);
+          continue;
+        }
+        if (line === "#N") {
+          currentBranch = 'normal';
+          currentTime = branchStartTime; // 重置时间到分歧开始点
+          measureNumber = branchStartMeasure; // 重置小节计数到分歧开始点
+          console.log(`切换到Normal分支 at time ${currentTime}, measure ${measureNumber}`);
+          continue;
+        }
+        if (line === "#M") {
+          currentBranch = 'master';
+          currentTime = branchStartTime; // 重置时间到分歧开始点
+          measureNumber = branchStartMeasure; // 重置小节计数到分歧开始点
+          console.log(`切换到Master分支 at time ${currentTime}, measure ${measureNumber}`);
+          continue;
+        }
+      }
 
       // GOGO模式
       if (line === "#GOGOSTART") {
@@ -194,11 +318,22 @@ export class TJAParser {
           .trim();
 
         // 记录小节线位置
-        currentCourse.measureLines.push({
+        const measureLine = {
           time: currentTime,
           measure: measureNumber,
           bpm: currentBPM,
-        });
+        };
+
+        if (inBranchSection) {
+          // 在分歧中，将小节线添加到当前分支
+          if (!branchNotes[currentBranch + '_measures']) {
+            branchNotes[currentBranch + '_measures'] = [];
+          }
+          branchNotes[currentBranch + '_measures'].push(measureLine);
+        } else {
+          // 不在分歧中，添加到主列表
+          currentCourse.measureLines.push(measureLine);
+        }
 
         // 处理特殊行
         if (noteLine.length === 1) {
@@ -229,13 +364,21 @@ export class TJAParser {
           const noteType = parseInt(noteLine[j]);
           if (noteType > 0 && noteType <= 8) {
             const noteTime = currentTime + j * noteInterval;
-            currentCourse.notes.push({
+            const note = {
               time: noteTime,
               type: noteType,
               gogo: gogoMode,
               bpm: currentBPM,
               measure: measureNumber,
-            });
+            };
+
+            if (inBranchSection) {
+              // 在分歧中，将音符添加到当前分支
+              branchNotes[currentBranch].push(note);
+            } else {
+              // 不在分歧中，添加到主列表
+              currentCourse.notes.push(note);
+            }
           }
         }
 
@@ -265,6 +408,41 @@ export class TJAParser {
     });
 
     return courses;
+  }
+
+  // 根据选择的分支获取音符数据
+  static getCourseWithBranch(course, branchType = 'normal') {
+    if (!course.hasBranch) {
+      return course;
+    }
+
+    // 创建一个新的course对象，合并主要部分和选择的分支
+    const result = {
+      ...course,
+      notes: [...course.notes], // 主要部分的音符
+      measureLines: [...course.measureLines] // 主要部分的小节线
+    };
+
+    // 添加选择分支的音符和小节线
+    if (course.branches[branchType]) {
+      result.notes.push(...course.branches[branchType].notes);
+      result.measureLines.push(...course.branches[branchType].measureLines);
+    }
+
+    // 重新排序
+    result.notes.sort((a, b) => a.time - b.time);
+    result.measureLines.sort((a, b) => a.time - b.time);
+
+    // 重新计算总时长
+    if (result.notes.length > 0) {
+      const lastNoteTime = result.notes[result.notes.length - 1].time;
+      const lastMeasureTime = result.measureLines.length > 0
+        ? result.measureLines[result.measureLines.length - 1].time
+        : 0;
+      result.totalTime = Math.max(lastNoteTime, lastMeasureTime) + 4;
+    }
+
+    return result;
   }
 
   // 获取气球所需击打次数
