@@ -125,11 +125,13 @@
   .controls-panel {
     margin-bottom: 1em;
     padding: 20px;
-    background: rgba(0, 0, 0, 0.3);
-    border-radius: 10px;
+    background: rgba(0, 0, 0, 0.4);
+    border: 2px solid rgba(255, 135, 0, 0.3);
+    border-radius: 15px;
     display: flex;
     flex-direction: column;
     gap: 15px;
+    box-shadow: 0 8px 25px rgba(255, 62, 13, 0.2);
   }
 
   .file-selection,
@@ -145,18 +147,19 @@
     padding: 12px 20px;
     font-size: 14px;
     font-weight: bold;
-    background: linear-gradient(45deg, #48dbfb, #0abde3);
+    background: linear-gradient(45deg, rgb(255, 62, 13), rgb(255, 135, 0));
     color: white;
     border: none;
     border-radius: 25px;
     cursor: pointer;
     transition: all 0.3s ease;
-    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+    box-shadow: 0 4px 15px rgba(255, 62, 13, 0.3);
   }
   
   .mode-btn:hover:not(:disabled) {
     transform: translateY(-2px);
-    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
+    box-shadow: 0 6px 20px rgba(255, 62, 13, 0.4);
+    background: linear-gradient(45deg, rgb(255, 135, 0), rgb(255, 62, 13));
   }
   
   .mode-btn:disabled {
@@ -187,19 +190,21 @@
     appearance: none;
     width: 16px;
     height: 16px;
-    background: #feca57;
+    background: linear-gradient(45deg, rgb(255, 62, 13), rgb(255, 135, 0));
     border-radius: 50%;
     cursor: pointer;
+    box-shadow: 0 2px 6px rgba(255, 62, 13, 0.3);
   }
 
   .volume-slider::-moz-range-thumb,
   .speed-slider::-moz-range-thumb {
     width: 16px;
     height: 16px;
-    background: #feca57;
+    background: linear-gradient(45deg, rgb(255, 62, 13), rgb(255, 135, 0));
     border-radius: 50%;
     border: none;
     cursor: pointer;
+    box-shadow: 0 2px 6px rgba(255, 62, 13, 0.3);
   }
 
   .speed-control {
@@ -220,11 +225,17 @@
 
   select {
     padding: 8px 12px;
-    background: rgba(255, 255, 255, 0.1);
+    background: rgba(0, 0, 0, 0.4);
     color: white;
-    border: 1px solid rgba(255, 255, 255, 0.3);
-    border-radius: 5px;
+    border: 2px solid rgba(255, 135, 0, 0.4);
+    border-radius: 8px;
     outline: none;
+    transition: border-color 0.3s ease;
+  }
+  
+  select:focus {
+    border-color: rgb(255, 135, 0);
+    box-shadow: 0 0 10px rgba(255, 135, 0, 0.3);
   }
 
   select:disabled {
@@ -234,17 +245,19 @@
 
   button {
     padding: 8px 16px;
-    background: linear-gradient(45deg, #ff6b6b, #feca57);
+    background: linear-gradient(45deg, rgb(255, 62, 13), rgb(255, 135, 0));
     color: white;
     border: none;
-    border-radius: 5px;
+    border-radius: 8px;
     cursor: pointer;
     transition: all 0.3s ease;
+    box-shadow: 0 3px 10px rgba(255, 62, 13, 0.3);
   }
 
   button:hover:not(:disabled) {
-    transform: translateY(-1px);
-    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
+    transform: translateY(-2px);
+    box-shadow: 0 6px 15px rgba(255, 62, 13, 0.4);
+    background: linear-gradient(45deg, rgb(255, 135, 0), rgb(255, 62, 13));
   }
 
   button:disabled {

@@ -340,7 +340,7 @@
 </script>
 
 <main>
-  <h1>太鼓达人谱面预览器</h1>
+  <h1>TJA-Viewer</h1>
 
   <GameControls
     {tjaFiles}
@@ -384,7 +384,7 @@
     margin: 0 auto;
     padding: 20px;
     font-family: Arial, sans-serif;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    background: linear-gradient(135deg, rgb(255, 62, 13) 0%, rgb(255, 135, 0) 100%);
     min-height: 100vh;
     color: white;
   }
@@ -392,8 +392,10 @@
   h1 {
     text-align: center;
     color: #fff;
-    text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+    text-shadow: 3px 3px 6px rgba(0, 0, 0, 0.7);
     margin-bottom: 30px;
+    font-size: 2.5em;
+    font-weight: bold;
   }
 
   @media (max-width: 768px) {
