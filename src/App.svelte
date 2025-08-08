@@ -13,6 +13,8 @@
   let visibleNotes = []
   let gameCanvas
   let hitNotes = [] // 存储被击中的音符，用于击飞动画
+  let noteSpeed = 1.0 // 音符流动速度倍率，1.0为默认速度
+  let measureLines = [] // 存储小节线信息
 
   // zip 相关
   let tjaFiles = []
@@ -193,11 +195,13 @@
     const lines = text.split('\n')
     const metadata = {}
     const noteData = []
+    const measureLineData = [] // 存储小节线位置
     let inNoteSection = false
     let currentBPM = 150
     let currentTime = 0
     let gogoMode = false
     let offset = 0
+    let measureNumber = 0 // 当前小节数
     
     for (let line of lines) {
       line = line.trim()
@@ -256,6 +260,13 @@
       if (inNoteSection && line.includes(',')) {
         const noteLine = line.replace(',', '').replace(/\/\/.*/, '').trim()
         
+        // 在每个小节开始时记录小节线位置
+        measureLineData.push({
+          time: currentTime,
+          measure: measureNumber,
+          bpm: currentBPM
+        })
+        
         // 处理特殊行（单个数字，通常是小节线标记）
         if (noteLine.length === 1) {
           const specialNote = parseInt(noteLine)
@@ -263,6 +274,7 @@
             // 气球音符（单独出现时作为小节标记）
             const measureDuration = (60 / currentBPM) * 4
             currentTime += measureDuration
+            measureNumber++
             continue
           } else if (specialNote === 8) {
             // 连打结束标记
@@ -274,6 +286,7 @@
           // 空小节，增加一个小节的时间
           const measureDuration = (60 / currentBPM) * 4 // 一个4/4拍的小节时长
           currentTime += measureDuration
+          measureNumber++
           continue
         }
         
@@ -291,12 +304,13 @@
               type: noteType,
               gogo: gogoMode,
               bpm: currentBPM,
-              measure: Math.floor(noteData.length / 16) // 大致的小节数
+              measure: measureNumber
             })
           }
         }
         
         currentTime += measureDuration
+        measureNumber++
       }
     }
     
@@ -304,11 +318,13 @@
     noteData.sort((a, b) => a.time - b.time)
     
     console.log('解析完成，总音符数:', noteData.length)
+    console.log('小节线数量:', measureLineData.length)
     console.log('前几个音符时间:', noteData.slice(0, 5).map(n => n.time))
     
     return {
       metadata,
       notes: noteData,
+      measureLines: measureLineData,
       bpm: currentBPM,
       totalTime: currentTime,
       offset: offset
@@ -331,7 +347,9 @@
   function updateVisibleNotes() {
     if (!tjaData) return
     
-    const lookAhead = 3 // 提前3秒显示音符
+    // 根据速度调整显示范围，速度越快需要提前显示越多
+    const baseLookAhead = 3 // 基础提前显示时间
+    const lookAhead = baseLookAhead * noteSpeed // 根据速度倍率调整
     const lookBehind = 0.5 // 保持0.5秒显示过去的音符
     
     visibleNotes = tjaData.notes.filter(note => 
@@ -340,16 +358,25 @@
       !note.hasBeenHit // 排除已经被击中的音符
     )
     
+    // 更新可见的小节线
+    measureLines = tjaData.measureLines.filter(measureLine =>
+      measureLine.time >= currentTime - lookBehind &&
+      measureLine.time <= currentTime + lookAhead
+    )
+    
     // 检查是否有音符经过判定线，触发击飞效果
     const hitLineX = 120
-    const speed = 300
+    const speed = 300 * noteSpeed // 应用速度倍率
     
     tjaData.notes.forEach(note => {
       const timeDiff = note.time - currentTime
       const x = hitLineX + (timeDiff * speed)
       
-      // 当音符刚好经过判定线时（在很小的时间窗口内）
-      if (!note.hasBeenHit && Math.abs(timeDiff) < 0.05) {
+      // 根据速度调整击飞判定的时间窗口，速度越快窗口越小
+      const hitWindow = 0.05 / noteSpeed
+      
+      // 当音符刚好经过判定线时（在调整后的时间窗口内）
+      if (!note.hasBeenHit && Math.abs(timeDiff) < hitWindow) {
         note.hasBeenHit = true
         triggerHitEffect(note, x, 100) // 100是y坐标
       }
@@ -453,10 +480,32 @@
     ctx.arc(120, 100, 25, 0, 2 * Math.PI)
     ctx.stroke()
     
-    // 绘制音符
-    const speed = 300 // 像素每秒
+    // 绘制小节线
+    const speed = 300 * noteSpeed // 应用速度倍率
     const hitLineX = 120
     
+    ctx.strokeStyle = '#666666'
+    ctx.lineWidth = 1
+    measureLines.forEach(measureLine => {
+      const timeDiff = measureLine.time - currentTime
+      const x = hitLineX + (timeDiff * speed)
+      
+      // 只绘制在屏幕内的小节线
+      if (x >= 80 && x <= width - 80) {
+        ctx.beginPath()
+        ctx.moveTo(x, 50)
+        ctx.lineTo(x, 150)
+        ctx.stroke()
+        
+        // 在小节线上方显示小节数
+        ctx.fillStyle = '#aaaaaa'
+        ctx.font = '10px Arial'
+        ctx.textAlign = 'center'
+        ctx.fillText(`${measureLine.measure + 1}`, x, 45)
+      }
+    })
+    
+    // 绘制音符
     visibleNotes.forEach(note => {
       const timeDiff = note.time - currentTime
       const x = hitLineX + (timeDiff * speed)
@@ -569,6 +618,19 @@
     ctx.font = '14px Arial'
     ctx.textAlign = 'left'
     ctx.fillText(`时间: ${formatTime(currentTime)}`, 10, 30)
+    
+    // 计算并显示当前小节数
+    let currentMeasure = 0
+    if (tjaData && tjaData.measureLines) {
+      // 找到当前时间对应的小节
+      for (let i = tjaData.measureLines.length - 1; i >= 0; i--) {
+        if (tjaData.measureLines[i].time <= currentTime) {
+          currentMeasure = tjaData.measureLines[i].measure + 1
+          break
+        }
+      }
+    }
+    ctx.fillText(`小节: ${currentMeasure}`, 200, 30)
     
     // 绘制BPM信息
     if (tjaData) {
@@ -745,6 +807,10 @@
     handleProgressClick(event)
   }
 
+  function handleSpeedChange(event) {
+    noteSpeed = parseFloat(event.target.value)
+  }
+
   function formatTime(seconds) {
     if (!seconds || isNaN(seconds)) return "0:00"
     const mins = Math.floor(seconds / 60)
@@ -776,6 +842,22 @@
     <div class="song-info">
       <h2>{tjaData.metadata.TITLE || '未知曲目'}</h2>
       <p>BPM: {tjaData.bpm} | 难度: {tjaData.metadata.LEVEL || 'N/A'} | OFFSET: {tjaData.offset}s</p>
+    </div>
+    
+    <div style="margin-bottom: 1em;">
+      <label for="speed-slider">音符流动速度：</label>
+      <input 
+        id="speed-slider" 
+        type="range" 
+        min="0.5" 
+        max="3.0" 
+        step="0.1" 
+        bind:value={noteSpeed}
+        on:input={handleSpeedChange}
+        style="width: 200px;"
+      />
+      <span style="margin-left: 0.5em;">{noteSpeed.toFixed(1)}x</span>
+      <span style="margin-left: 1em; font-size: 0.9em; color: #666;">(1.0x为默认速度)</span>
     </div>
   {/if}
 
