@@ -27,6 +27,13 @@
   let judgeText = ""; // 判定文字显示
   let judgeTimeout = null; // 判定文字显示超时
   let gameStartTime = 0; // 游戏开始时间
+  
+  // 连打和气球相关状态
+  let activeRolls = []; // 当前活跃的连打音符（type 5、6）
+  let activeBalloons = []; // 当前活跃的气球音符（type 7）
+  let balloonHitCounts = new Map(); // 气球击打次数记录
+  let rollHitCounts = new Map(); // 连打击打次数记录
+  let lastRollHitTime = new Map(); // 连打最后击打时间，防止连击太快
 
   // zip 相关
   let tjaFiles = [];
@@ -543,7 +550,9 @@
       (note) =>
         note.time >= currentTime - lookBehind &&
         note.time <= currentTime + lookAhead &&
-        (isPlayMode ? !note.hasBeenJudged : !note.hasBeenHit), // 游戏模式下只排除已判定的音符，预览模式下排除已击中的音符
+        (isPlayMode ? 
+          !note.hasBeenJudged : // 游戏模式下，排除已判定的音符（包括超时的气球）
+          !note.hasBeenHit), // 预览模式下排除已击中的音符
     );
 
     // 更新可见的小节线
@@ -571,6 +580,9 @@
           triggerHitEffect(note, x, 100); // 100是y坐标
         }
       });
+    } else {
+      // 游玩模式下，更新活跃的连打和气球
+      updateActiveSpecialNotes();
     }
 
     // 更新击飞中的音符动画
@@ -580,6 +592,136 @@
     if (isPlayMode) {
       checkMissedNotes();
     }
+  }
+  
+  // 更新活跃的连打和气球音符
+  function updateActiveSpecialNotes() {
+    if (!tjaData) return;
+    
+    // 检查新的连打音符（type 5, 6）
+    for (let i = 0; i < tjaData.notes.length; i++) {
+      const note = tjaData.notes[i];
+      
+      if ((note.type === 5 || note.type === 6) && !note.isRollActive && note.time <= currentTime + 0.1) {
+        // 找到对应的结束音符（type 8）
+        let endNote = null;
+        for (let j = i + 1; j < tjaData.notes.length; j++) {
+          if (tjaData.notes[j].type === 8) {
+            endNote = tjaData.notes[j];
+            break;
+          }
+        }
+        
+        if (endNote) {
+          const rollData = {
+            note: note,
+            startTime: note.time,
+            endTime: endNote.time,
+            type: note.type,
+            currentTime: currentTime
+          };
+          
+          activeRolls.push(rollData);
+          note.isRollActive = true;
+          
+          console.log(`激活连打: ${note.type === 5 ? '小连打' : '大连打'} 从 ${note.time}s 到 ${endNote.time}s`);
+        }
+      }
+      
+      // 检查气球音符（type 7）
+      if (note.type === 7 && !note.isBalloonActive && note.time <= currentTime + 0.1) {
+        // 找到对应的结束音符（type 8）
+        let endNote = null;
+        for (let j = i + 1; j < tjaData.notes.length; j++) {
+          if (tjaData.notes[j].type === 8) {
+            endNote = tjaData.notes[j];
+            break;
+          }
+        }
+        
+        if (endNote) {
+          // 获取气球所需击打次数
+          const requiredHits = getBalloonHits(note, tjaData);
+          
+          const balloonData = {
+            note: note,
+            startTime: note.time,
+            endTime: endNote.time,
+            requiredHits: requiredHits,
+            currentTime: currentTime,
+            isPopped: false
+          };
+          
+          activeBalloons.push(balloonData);
+          note.isBalloonActive = true;
+          
+          console.log(`激活气球: 需要击打 ${requiredHits} 次，从 ${note.time}s 到 ${endNote.time}s`);
+        }
+      }
+    }
+    
+    // 移除已结束的连打
+    activeRolls = activeRolls.filter(roll => {
+      if (currentTime >= roll.endTime) {
+        // 连打结束，计算得分
+        const rollId = `roll_${roll.startTime}`;
+        const hitCount = rollHitCounts.get(rollId) || 0;
+        console.log(`连打结束: 击打了 ${hitCount} 次`);
+        return false;
+      }
+      return true;
+    });
+    
+    // 移除已结束的气球
+    activeBalloons = activeBalloons.filter(balloon => {
+      if (currentTime >= balloon.endTime && !balloon.isPopped) {
+        // 气球时间结束但没有爆炸，标记为超时并触发miss动画
+        balloon.note.isBalloonTimeout = true;
+        balloon.note.hasBeenJudged = true; // 标记为已判定，避免重复显示
+        
+        // 触发miss效果（向左飞行，和普通音符miss一样）
+        const hitLineX = 120;
+        const missNote = {
+          ...balloon.note,
+          x: hitLineX,
+          y: 100,
+          vx: -300 - Math.random() * 200, // 向左飞行的速度（-300到-500px/s）
+          vy: -200 - Math.random() * 100, // 向上飞行的速度（-200到-300px/s）
+          gravity: 600, // 重力加速度
+          opacity: 0.7, // 稍微透明，表示miss
+          fadeSpeed: 2.0,
+          startTime: performance.now(),
+        };
+        hitNotes.push(missNote);
+        
+        console.log('气球超时，触发miss动画');
+        return false;
+      }
+      return !balloon.isPopped; // 已爆炸的气球也移除
+    });
+  }
+  
+  // 获取气球所需击打次数
+  function getBalloonHits(balloonNote, courseData) {
+    if (!courseData.metadata || !courseData.metadata.BALLOON) {
+      return 5; // 默认值
+    }
+    
+    // 解析BALLOON字符串，格式如："5,12,5"
+    const balloonHits = courseData.metadata.BALLOON.split(',').map(s => parseInt(s.trim()));
+    
+    // 找到当前是第几个气球音符
+    let balloonIndex = 0;
+    for (let note of courseData.notes) {
+      if (note.type === 7) {
+        if (note === balloonNote) {
+          break;
+        }
+        balloonIndex++;
+      }
+    }
+    
+    return balloonHits[balloonIndex] || 5; // 如果超出范围，默认5次
   }
 
   // 计算考虑滚动速度变化的音符X位置
@@ -689,11 +831,22 @@
       judgeTimeout = null;
     }
     
+    // 重置连打和气球状态
+    activeRolls = [];
+    activeBalloons = [];
+    balloonHitCounts.clear();
+    rollHitCounts.clear();
+    lastRollHitTime.clear();
+    
     // 重置所有音符的状态
     if (tjaData && tjaData.notes) {
       tjaData.notes.forEach(note => {
         note.hasBeenHit = false;
         note.hasBeenJudged = false;
+        note.isRollActive = false;
+        note.isBalloonActive = false;
+        note.isBalloonPopped = false;
+        note.isBalloonTimeout = false;
       });
     }
     hitNotes = [];
@@ -703,15 +856,45 @@
     if (!tjaData || !isPlayMode) return;
 
     const currentTimeMs = currentTime * 1000;
+    
+    // 首先检查是否有活跃的连打或气球可以击打
+    let hitActiveSpecial = false;
+    
+    // 检查活跃的连打音符
+    for (let roll of activeRolls) {
+      if (canHitRoll(roll, hitType)) {
+        hitRoll(roll);
+        hitActiveSpecial = true;
+        break; // 一次只击打一个连打
+      }
+    }
+    
+    // 检查活跃的气球音符
+    if (!hitActiveSpecial) {
+      for (let balloon of activeBalloons) {
+        if (canHitBalloon(balloon, hitType)) {
+          hitBalloon(balloon);
+          hitActiveSpecial = true;
+          break; // 一次只击打一个气球
+        }
+      }
+    }
+    
+    // 如果击打了特殊音符，不再检查普通音符
+    if (hitActiveSpecial) return;
+
     const hitLineX = 120;
     const speed = 300 * noteSpeed;
 
-    // 找到判定窗口内最近的音符
+    // 找到判定窗口内最近的普通音符（非连打、气球类型）
     let closestNote = null;
     let closestDistance = Infinity;
     
     for (let note of tjaData.notes) {
       if (note.hasBeenJudged) continue;
+      
+      // 跳过连打、气球和结束标记
+      if (note.type === 5 || note.type === 6 || note.type === 7 || note.type === 8) continue;
       
       const noteTimeMs = note.time * 1000;
       const timeDiff = Math.abs(noteTimeMs - currentTimeMs);
@@ -774,6 +957,104 @@
       showJudgeText("MISS");
     }
   }
+  
+  // 检查连打是否可以击打
+  function canHitRoll(roll, hitType) {
+    // 连打可以用任何键击打（咚或咔都可以）
+    const rollId = `roll_${roll.startTime}`;
+    const lastHit = lastRollHitTime.get(rollId) || 0;
+    const now = performance.now();
+    
+    // 防止击打太频繁（最少间隔50ms）
+    return now - lastHit >= 50;
+  }
+  
+  // 击打连打
+  function hitRoll(roll) {
+    const rollId = `roll_${roll.startTime}`;
+    const currentHitCount = rollHitCounts.get(rollId) || 0;
+    
+    rollHitCounts.set(rollId, currentHitCount + 1);
+    lastRollHitTime.set(rollId, performance.now());
+    
+    // 每次击打连打得100分
+    score += 100;
+    
+    // 连打不算miss，也不影响combo
+    showJudgeText("连打!");
+    
+    // 触发击飞效果（使用和普通音符相同的速度）
+    const speed = 300 * noteSpeed;
+    const x = calculateNotePosition(roll.currentTime || currentTime, currentTime, speed);
+    triggerHitEffect({ ...roll.note, type: roll.note.type }, x, 100);
+  }
+  
+  // 检查气球是否可以击打
+  function canHitBalloon(balloon, hitType) {
+    // 气球可以用任何键击打
+    if (balloon.isPopped) return false;
+    
+    const balloonId = `balloon_${balloon.startTime}`;
+    const lastHit = lastRollHitTime.get(balloonId) || 0;
+    const now = performance.now();
+    
+    // 防止击打太频繁（最少间隔50ms）
+    return now - lastHit >= 10;
+  }
+  
+  // 击打气球
+  function hitBalloon(balloon) {
+    const balloonId = `balloon_${balloon.startTime}`;
+    const currentHitCount = balloonHitCounts.get(balloonId) || 0;
+    const newHitCount = currentHitCount + 1;
+    
+    balloonHitCounts.set(balloonId, newHitCount);
+    lastRollHitTime.set(balloonId, performance.now());
+    
+    // 每次击打气球得100分
+    score += 100;
+    
+    // 检查是否达到所需击打次数
+    if (newHitCount >= balloon.requiredHits) {
+      // 气球爆炸！
+      balloon.isPopped = true;
+      score += 500; // 爆炸奖励分数
+      showJudgeText("爆炸!");
+      
+      // 从活跃气球列表中移除
+      const index = activeBalloons.indexOf(balloon);
+      if (index > -1) {
+        activeBalloons.splice(index, 1);
+      }
+      
+      // 标记对应的音符为已击中和已爆炸
+      balloon.note.isBalloonPopped = true;
+      balloon.note.hasBeenHit = true;
+      balloon.note.hasBeenJudged = true;
+      
+      // 触发击飞效果（和普通音符一样的速度和方向）
+      const hitLineX = 120;
+      triggerHitEffect({ ...balloon.note, type: 7 }, hitLineX, 100);
+      
+    } else {
+      showJudgeText(`气球 ${newHitCount}/${balloon.requiredHits}`);
+      
+      // 触发小的击打效果但不击飞（只是震动效果）
+      const hitLineX = 120;
+      const hitNote = {
+        ...balloon.note,
+        x: hitLineX,
+        y: 100,
+        vx: 0, // 不水平移动
+        vy: -50, // 小幅向上
+        gravity: 200,
+        opacity: 1.0,
+        fadeSpeed: 500.0, // 快速消失
+        startTime: performance.now(),
+      };
+      hitNotes.push(hitNote);
+    }
+  }
 
   function getNoteHitType(noteType) {
     switch (noteType) {
@@ -796,6 +1077,70 @@
     judgeTimeout = setTimeout(() => {
       judgeText = "";
     }, 500);
+  }
+  
+  // 绘制连打轨道
+  function drawRollTrack(ctx, rollNote, startX, y, speed) {
+    // 找到对应的结束音符来计算轨道长度
+    let endTime = rollNote.time + 2; // 默认2秒
+    for (let i = 0; i < tjaData.notes.length; i++) {
+      if (tjaData.notes[i].time > rollNote.time && tjaData.notes[i].type === 8) {
+        endTime = tjaData.notes[i].time;
+        break;
+      }
+    }
+    
+    const endX = calculateNotePosition(endTime, currentTime, speed);
+    
+    // 只绘制可见部分的轨道
+    const trackStartX = Math.max(80, Math.min(startX, endX));
+    const trackEndX = Math.min(gameCanvas.width - 80, Math.max(startX, endX));
+    
+    if (trackEndX > trackStartX) {
+      // 绘制连打轨道背景
+      ctx.fillStyle = rollNote.type === 6 ? "rgba(255, 255, 34, 0.3)" : "rgba(255, 255, 68, 0.3)";
+      ctx.fillRect(trackStartX, y - 15, trackEndX - trackStartX, 30);
+      
+      // 绘制轨道边框
+      ctx.strokeStyle = rollNote.type === 6 ? "#ffcc00" : "#ffff44";
+      ctx.lineWidth = 2;
+      ctx.strokeRect(trackStartX, y - 15, trackEndX - trackStartX, 30);
+      
+      // 绘制连打进度
+      if (rollNote.isRollActive) {
+        const rollId = `roll_${rollNote.time}`;
+        const hitCount = rollHitCounts.get(rollId) || 0;
+        
+        // 显示击打次数
+        if (hitCount > 0) {
+          ctx.fillStyle = "#ffffff";
+          ctx.font = "bold 12px Arial";
+          ctx.textAlign = "center";
+          ctx.fillText(`${hitCount}连`, (trackStartX + trackEndX) / 2, y - 25);
+        }
+      }
+    }
+  }
+  
+  // 绘制气球击打进度
+  function drawBalloonProgress(ctx, x, y, currentHits, requiredHits) {
+    const progressWidth = 50;
+    const progressHeight = 6;
+    
+    // 绘制进度条背景
+    ctx.fillStyle = "rgba(0, 0, 0, 0.5)";
+    ctx.fillRect(x - progressWidth/2, y, progressWidth, progressHeight);
+    
+    // 绘制进度条
+    const progress = Math.min(currentHits / requiredHits, 1);
+    ctx.fillStyle = progress >= 1 ? "#00ff00" : "#ffff00";
+    ctx.fillRect(x - progressWidth/2, y, progressWidth * progress, progressHeight);
+    
+    // 绘制进度文字
+    ctx.fillStyle = "#ffffff";
+    ctx.font = "10px Arial";
+    ctx.textAlign = "center";
+    ctx.fillText(`${currentHits}/${requiredHits}`, x, y - 2);
   }
 
   // 检查错过的音符
@@ -874,15 +1219,19 @@
 
     // 绘制音符
     visibleNotes.forEach((note) => {
-      const x = calculateNotePosition(note.time, currentTime, speed);
+      let x = calculateNotePosition(note.time, currentTime, speed);
       const y = 100;
 
       // 只绘制在屏幕内的音符
       if (x < -30 || x > width + 30) return;
+      
+      // 跳过结束标记音符的绘制
+      if (note.type === 8) return;
 
       let radius = 20;
       let color = "#888888";
       let strokeColor = "#ffffff";
+      let shouldDrawNote = true;
 
       // 根据音符类型设置样式
       switch (note.type) {
@@ -907,17 +1256,74 @@
         case 5: // 小连打 - 黄色
           color = "#ffff44";
           radius = 20;
+          // 检查是否为活跃连打
+          if (note.isRollActive) {
+            // 绘制连打轨道
+            drawRollTrack(ctx, note, x, y, speed);
+            shouldDrawNote = x >= hitLineX - 50; // 只在接近判定线时显示音符
+          }
           break;
         case 6: // 大连打 - 大黄色
           color = "#ffff22";
           radius = 28;
           strokeColor = "#ff8800";
+          // 检查是否为活跃连打
+          if (note.isRollActive) {
+            // 绘制连打轨道
+            drawRollTrack(ctx, note, x, y, speed);
+            shouldDrawNote = x >= hitLineX - 50; // 只在接近判定线时显示音符
+          }
           break;
         case 7: // 气球 - 粉色
           color = "#ff44ff";
           radius = 25;
+          
+          // 气球的特殊位置逻辑
+          // 检查气球状态
+          if (note.isBalloonActive && !note.isBalloonPopped) {
+            const balloonId = `balloon_${note.time}`;
+            const currentHits = balloonHitCounts.get(balloonId) || 0;
+            const requiredHits = getBalloonHits(note, tjaData);
+            
+            // 气球在激活状态下应该停在判定线位置
+            if (currentTime >= note.time) {
+              x = hitLineX; // 停在判定线位置
+            }
+            
+            // 根据击打进度改变颜色
+            const progress = currentHits / requiredHits;
+            if (progress > 0.8) {
+              color = "#ff8844"; // 即将爆炸
+            } else if (progress > 0.5) {
+              color = "#ff6666"; // 击打中
+            }
+            
+            // 绘制气球进度
+            drawBalloonProgress(ctx, x, y - 35, currentHits, requiredHits);
+          } else if (note.isBalloonPopped || note.isBalloonTimeout) {
+            // 已爆炸或超时的气球不显示（由击飞动画处理）
+            shouldDrawNote = false;
+          } else {
+            // 找到对应的结束时间来判断气球是否应该停在判定线
+            let endTime = note.time + 2; // 默认2秒
+            for (let i = 0; i < tjaData.notes.length; i++) {
+              if (tjaData.notes[i].time > note.time && tjaData.notes[i].type === 8) {
+                endTime = tjaData.notes[i].time;
+                break;
+              }
+            }
+            
+            // 如果当前时间在气球的活动范围内，停在判定线
+            if (currentTime >= note.time && currentTime < endTime) {
+              x = hitLineX;
+            }
+          }
+          
+          if (!shouldDrawNote) return;
           break;
       }
+
+      if (!shouldDrawNote) return;
 
       // GOGO模式效果
       if (note.gogo) {
@@ -1037,6 +1443,29 @@
         ctx.font = '14px Arial';
         ctx.textAlign = 'center';
         ctx.fillText('按键: F/J = 咚(红)  D/K = 咔(蓝)', width / 2, height - 20);
+        ctx.fillText('连打和气球可用任意按键击打', width / 2, height - 5);
+      }
+      
+      // 显示当前活跃的连打和气球信息
+      if (activeRolls.length > 0 || activeBalloons.length > 0) {
+        let infoY = 170;
+        ctx.fillStyle = '#ffff00';
+        ctx.font = '12px Arial';
+        ctx.textAlign = 'left';
+        
+        activeRolls.forEach((roll, index) => {
+          const rollId = `roll_${roll.startTime}`;
+          const hitCount = rollHitCounts.get(rollId) || 0;
+          ctx.fillText(`连打${index + 1}: ${hitCount}次`, 10, infoY);
+          infoY += 15;
+        });
+        
+        activeBalloons.forEach((balloon, index) => {
+          const balloonId = `balloon_${balloon.startTime}`;
+          const hitCount = balloonHitCounts.get(balloonId) || 0;
+          ctx.fillText(`气球${index + 1}: ${hitCount}/${balloon.requiredHits}`, 10, infoY);
+          infoY += 15;
+        });
       }
     }
   }
@@ -1159,11 +1588,22 @@
       tjaData.notes.forEach((note) => {
         note.hasBeenHit = false;
         note.hasBeenJudged = false;
+        note.isRollActive = false;
+        note.isBalloonActive = false;
+        note.isBalloonPopped = false;
+        note.isBalloonTimeout = false;
       });
     }
 
     // 清空击飞中的音符数组
     hitNotes = [];
+    
+    // 重置连打和气球状态
+    activeRolls = [];
+    activeBalloons = [];
+    balloonHitCounts.clear();
+    rollHitCounts.clear();
+    lastRollHitTime.clear();
     
     // 如果在游玩模式，重置游戏状态
     if (isPlayMode) {
