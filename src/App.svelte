@@ -18,6 +18,16 @@
   let tjaCourses = []; // 存储所有难度的谱面数据
   let selectedCourse = ""; // 当前选择的难度
 
+  // 游玩相关状态
+  let isPlayMode = false; // 是否处于游玩模式
+  let score = 0; // 分数
+  let combo = 0; // 连击数
+  let maxCombo = 0; // 最大连击数
+  let hitCount = { perfect: 0, good: 0, bad: 0, miss: 0 }; // 命中统计
+  let judgeText = ""; // 判定文字显示
+  let judgeTimeout = null; // 判定文字显示超时
+  let gameStartTime = 0; // 游戏开始时间
+
   // zip 相关
   let tjaFiles = [];
   let oggFiles = [];
@@ -122,6 +132,29 @@
     if (event.code === "Space") {
       event.preventDefault();
       togglePlay();
+    }
+    
+    // 游玩模式按键处理
+    if (isPlayMode && isPlaying) {
+      event.preventDefault();
+      
+      let hitType = null;
+      switch (event.code) {
+        case "KeyF":
+        case "KeyJ":
+          // 咚（红色音符）
+          hitType = "don";
+          break;
+        case "KeyD":
+        case "KeyK":
+          // 咔（蓝色音符）
+          hitType = "ka";
+          break;
+      }
+      
+      if (hitType) {
+        handlePlayerHit(hitType);
+      }
     }
   }
 
@@ -464,7 +497,7 @@
       (note) =>
         note.time >= currentTime - lookBehind &&
         note.time <= currentTime + lookAhead &&
-        !note.hasBeenHit, // 排除已经被击中的音符
+        (isPlayMode ? !note.hasBeenJudged : !note.hasBeenHit), // 游戏模式下只排除已判定的音符，预览模式下排除已击中的音符
     );
 
     // 更新可见的小节线
@@ -474,26 +507,33 @@
         measureLine.time <= currentTime + lookAhead,
     );
 
-    // 检查是否有音符经过判定线，触发击飞效果
-    const hitLineX = 120;
-    const speed = 300 * noteSpeed; // 应用速度倍率
+    // 预览模式下，检查是否有音符经过判定线，触发击飞效果
+    if (!isPlayMode) {
+      const hitLineX = 120;
+      const speed = 300 * noteSpeed; // 应用速度倍率
 
-    tjaData.notes.forEach((note) => {
-      const timeDiff = note.time - currentTime;
-      const x = hitLineX + timeDiff * speed;
+      tjaData.notes.forEach((note) => {
+        const timeDiff = note.time - currentTime;
+        const x = hitLineX + timeDiff * speed;
 
-      // 根据速度调整击飞判定的时间窗口，速度越快窗口越小
-      const hitWindow = 0.05 / noteSpeed;
+        // 根据速度调整击飞判定的时间窗口，速度越快窗口越小
+        const hitWindow = 0.05 / noteSpeed;
 
-      // 当音符刚好经过判定线时（在调整后的时间窗口内）
-      if (!note.hasBeenHit && Math.abs(timeDiff) < hitWindow) {
-        note.hasBeenHit = true;
-        triggerHitEffect(note, x, 100); // 100是y坐标
-      }
-    });
+        // 当音符刚好经过判定线时（在调整后的时间窗口内）
+        if (!note.hasBeenHit && Math.abs(timeDiff) < hitWindow) {
+          note.hasBeenHit = true;
+          triggerHitEffect(note, x, 100); // 100是y坐标
+        }
+      });
+    }
 
     // 更新击飞中的音符动画
     updateHitNotes();
+    
+    // 游玩模式下检查错过的音符
+    if (isPlayMode) {
+      checkMissedNotes();
+    }
   }
 
   function triggerHitEffect(note, x, y) {
@@ -558,6 +598,156 @@
       cancelAnimationFrame(animationId);
       animationId = null;
     }
+  }
+
+  // 游玩模式相关函数
+  function togglePlayMode() {
+    isPlayMode = !isPlayMode;
+    if (isPlayMode) {
+      // 进入游玩模式，重置游戏状态
+      resetGameState();
+    }
+  }
+
+  function resetGameState() {
+    score = 0;
+    combo = 0;
+    maxCombo = 0;
+    hitCount = { perfect: 0, good: 0, bad: 0, miss: 0 };
+    judgeText = "";
+    if (judgeTimeout) {
+      clearTimeout(judgeTimeout);
+      judgeTimeout = null;
+    }
+    
+    // 重置所有音符的状态
+    if (tjaData && tjaData.notes) {
+      tjaData.notes.forEach(note => {
+        note.hasBeenHit = false;
+        note.hasBeenJudged = false;
+      });
+    }
+    hitNotes = [];
+  }
+
+  function handlePlayerHit(hitType) {
+    if (!tjaData || !isPlayMode) return;
+
+    const currentTimeMs = currentTime * 1000;
+    const hitLineX = 120;
+    const speed = 300 * noteSpeed;
+
+    // 找到判定窗口内最近的音符
+    let closestNote = null;
+    let closestDistance = Infinity;
+    
+    for (let note of tjaData.notes) {
+      if (note.hasBeenJudged) continue;
+      
+      const noteTimeMs = note.time * 1000;
+      const timeDiff = Math.abs(noteTimeMs - currentTimeMs);
+      
+      // 判定窗口（毫秒）
+      const perfectWindow = 50;  // ±50ms 完美
+      const goodWindow = 100;    // ±100ms 良好
+      const badWindow = 150;     // ±150ms 一般
+      
+      if (timeDiff <= badWindow && timeDiff < closestDistance) {
+        // 检查音符类型匹配
+        const noteType = getNoteHitType(note.type);
+        if (noteType === hitType) {
+          closestNote = note;
+          closestDistance = timeDiff;
+        }
+      }
+    }
+
+    if (closestNote) {
+      // 执行判定
+      let judge = "";
+      let scoreAdd = 0;
+      
+      if (closestDistance <= 50) {
+        judge = "PERFECT";
+        scoreAdd = 1000;
+        hitCount.perfect++;
+        combo++;
+      } else if (closestDistance <= 100) {
+        judge = "GOOD";
+        scoreAdd = 500;
+        hitCount.good++;
+        combo++;
+      } else {
+        judge = "BAD";
+        scoreAdd = 100;
+        hitCount.bad++;
+        combo = 0;
+      }
+      
+      // 更新分数和状态
+      score += scoreAdd + (combo * 10); // 连击奖励
+      maxCombo = Math.max(maxCombo, combo);
+      
+      // 显示判定文字
+      showJudgeText(judge);
+      
+      // 标记音符为已判定和已击中
+      closestNote.hasBeenJudged = true;
+      closestNote.hasBeenHit = true;
+      
+      // 触发击飞效果
+      const timeDiff = closestNote.time - currentTime;
+      const x = hitLineX + (timeDiff * speed);
+      triggerHitEffect(closestNote, x, 100);
+      
+    } else {
+      // 没有找到可判定的音符，算作miss
+      combo = 0;
+      showJudgeText("MISS");
+    }
+  }
+
+  function getNoteHitType(noteType) {
+    switch (noteType) {
+      case 1: // 小咚
+      case 3: // 大咚
+        return "don";
+      case 2: // 小咔
+      case 4: // 大咔
+        return "ka";
+      default:
+        return null;
+    }
+  }
+
+  function showJudgeText(judge) {
+    judgeText = judge;
+    if (judgeTimeout) {
+      clearTimeout(judgeTimeout);
+    }
+    judgeTimeout = setTimeout(() => {
+      judgeText = "";
+    }, 500);
+  }
+
+  // 检查错过的音符
+  function checkMissedNotes() {
+    if (!tjaData || !isPlayMode) return;
+
+    const currentTimeMs = currentTime * 1000;
+    
+    tjaData.notes.forEach(note => {
+      if (!note.hasBeenJudged && !note.hasBeenHit) {
+        const noteTimeMs = note.time * 1000;
+        
+        // 如果音符已经超过判定窗口150ms，算作miss
+        if (currentTimeMs > noteTimeMs + 150) {
+          note.hasBeenJudged = true;
+          hitCount.miss++;
+          combo = 0;
+        }
+      }
+    });
   }
 
   function drawNotes() {
@@ -746,6 +936,53 @@
     if (tjaData) {
       ctx.fillText(`BPM: ${tjaData.bpm}`, 10, height - 10);
     }
+    
+    // 绘制游玩模式信息
+    if (isPlayMode) {
+      // 分数
+      ctx.fillStyle = '#ffdd00';
+      ctx.font = 'bold 20px Arial';
+      ctx.textAlign = 'right';
+      ctx.fillText(`分数: ${score}`, width - 10, 30);
+      
+      // 连击数
+      ctx.fillStyle = combo > 10 ? '#ff6b6b' : '#ffffff';
+      ctx.font = 'bold 16px Arial';
+      ctx.fillText(`连击: ${combo}`, width - 10, 55);
+      
+      // 判定文字
+      if (judgeText) {
+        ctx.fillStyle = getJudgeColor(judgeText);
+        ctx.font = 'bold 24px Arial';
+        ctx.textAlign = 'center';
+        ctx.fillText(judgeText, width / 2, height / 2 - 20);
+      }
+      
+      // 命中统计（小字显示）
+      ctx.fillStyle = '#cccccc';
+      ctx.font = '12px Arial';
+      ctx.textAlign = 'left';
+      ctx.fillText(`Perfect: ${hitCount.perfect} Good: ${hitCount.good} Bad: ${hitCount.bad} Miss: ${hitCount.miss}`, 10, height - 30);
+      ctx.fillText(`Max Combo: ${maxCombo}`, 10, height - 50);
+      
+      // 按键提示
+      if (!isPlaying) {
+        ctx.fillStyle = '#aaaaaa';
+        ctx.font = '14px Arial';
+        ctx.textAlign = 'center';
+        ctx.fillText('按键: F/J = 咚(红)  D/K = 咔(蓝)', width / 2, height - 20);
+      }
+    }
+  }
+  
+  function getJudgeColor(judge) {
+    switch (judge) {
+      case 'PERFECT': return '#ffdd00';
+      case 'GOOD': return '#00ff00';
+      case 'BAD': return '#ffaa00';
+      case 'MISS': return '#ff0000';
+      default: return '#ffffff';
+    }
   }
 
   function drawHitNotes(ctx) {
@@ -855,11 +1092,17 @@
     if (tjaData && tjaData.notes) {
       tjaData.notes.forEach((note) => {
         note.hasBeenHit = false;
+        note.hasBeenJudged = false;
       });
     }
 
     // 清空击飞中的音符数组
     hitNotes = [];
+    
+    // 如果在游玩模式，重置游戏状态
+    if (isPlayMode) {
+      resetGameState();
+    }
   }
 
   function togglePlay() {
@@ -1014,6 +1257,10 @@
   <div class="controls">
     <button class="play-btn" on:click={togglePlay} disabled={!isLoaded}>
       {isPlaying ? "⏸️ 暂停" : "▶️ 播放"}
+    </button>
+    
+    <button class="mode-btn" on:click={togglePlayMode} disabled={!isLoaded}>
+      {isPlayMode ? "👁️ 预览模式" : "🎮 游玩模式"}
     </button>
 
     <div class="volume-control">
@@ -1186,6 +1433,30 @@
   }
 
   .play-btn:disabled {
+    background: #666;
+    cursor: not-allowed;
+    opacity: 0.6;
+  }
+
+  .mode-btn {
+    padding: 12px 20px;
+    font-size: 14px;
+    font-weight: bold;
+    background: linear-gradient(45deg, #48dbfb, #0abde3);
+    color: white;
+    border: none;
+    border-radius: 25px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+  }
+  
+  .mode-btn:hover:not(:disabled) {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
+  }
+  
+  .mode-btn:disabled {
     background: #666;
     cursor: not-allowed;
     opacity: 0.6;
