@@ -157,19 +157,19 @@
     padding: 12px 24px;
     font-size: 16px;
     font-weight: bold;
-    background: linear-gradient(45deg, rgb(255, 62, 13), rgb(255, 135, 0));
+    background: linear-gradient(45deg, rgb(255, 180, 120), rgb(255, 210, 150));
     color: white;
     border: none;
     border-radius: 25px;
     cursor: pointer;
     transition: all 0.3s ease;
-    box-shadow: 0 4px 15px rgba(255, 62, 13, 0.3);
+    box-shadow: 0 4px 15px rgba(255, 180, 120, 0.3);
   }
 
   .play-btn:hover:not(:disabled) {
     transform: translateY(-3px);
-    box-shadow: 0 8px 25px rgba(255, 62, 13, 0.4);
-    background: linear-gradient(45deg, rgb(255, 135, 0), rgb(255, 62, 13));
+    box-shadow: 0 8px 25px rgba(255, 180, 120, 0.4);
+    background: linear-gradient(45deg, rgb(255, 210, 150), rgb(255, 180, 120));
   }
 
   .play-btn:disabled {
@@ -201,15 +201,15 @@
   .progress-bar:hover {
     height: 10px;
     background: rgba(255, 255, 255, 0.3);
-    border-color: rgb(255, 135, 0);
+    border-color: rgb(255, 210, 150);
   }
 
   .progress-fill {
     height: 100%;
-    background: linear-gradient(90deg, rgb(255, 62, 13), rgb(255, 135, 0));
+    background: linear-gradient(90deg, rgb(255, 180, 120), rgb(255, 210, 150));
     border-radius: 4px;
     transition: width 0.1s ease;
-    box-shadow: 0 0 10px rgba(255, 62, 13, 0.5);
+    box-shadow: 0 0 10px rgba(255, 180, 120, 0.5);
   }
 
   .status {
@@ -217,7 +217,7 @@
     padding: 10px;
     font-weight: bold;
     background: rgba(0, 0, 0, 0.5);
-    border: 1px solid rgba(255, 135, 0, 0.4);
+    border: 1px solid rgba(255, 210, 150, 0.4);
     border-radius: 8px;
     color: white;
     box-shadow: 0 3px 10px rgba(255, 62, 13, 0.2);

@@ -5,7 +5,7 @@
 
   color-scheme: light dark;
   color: rgba(255, 255, 255, 0.95);
-  background: linear-gradient(135deg, rgb(255, 62, 13) 0%, rgb(255, 135, 0) 100%);
+  background: linear-gradient(135deg, rgb(255, 180, 120) 0%, rgb(255, 210, 150) 100%);
 
   font-synthesis: none;
   text-rendering: optimizeLegibility;
@@ -21,7 +21,7 @@ body {
   margin: 0;
   padding: 0;
   min-height: 100vh;
-  background: linear-gradient(135deg, rgb(255, 62, 13) 0%, rgb(255, 135, 0) 100%);
+  background: linear-gradient(135deg, rgb(255, 180, 120) 0%, rgb(255, 210, 150) 100%);
 }
 
 #app {
@@ -49,20 +49,20 @@ button {
   font-size: 1em;
   font-weight: 500;
   font-family: inherit;
-  background: linear-gradient(45deg, rgb(255, 62, 13), rgb(255, 135, 0));
+  background: linear-gradient(45deg, rgb(255, 180, 120), rgb(255, 210, 150));
   color: white;
   cursor: pointer;
   transition: all 0.25s ease;
-  box-shadow: 0 3px 10px rgba(255, 62, 13, 0.3);
+  box-shadow: 0 3px 10px rgba(255, 180, 120, 0.3);
 }
 button:hover {
   transform: translateY(-2px);
-  box-shadow: 0 6px 20px rgba(255, 62, 13, 0.4);
-  background: linear-gradient(45deg, rgb(255, 135, 0), rgb(255, 62, 13));
+  box-shadow: 0 6px 20px rgba(255, 180, 120, 0.4);
+  background: linear-gradient(45deg, rgb(255, 210, 150), rgb(255, 180, 120));
 }
 button:focus,
 button:focus-visible {
-  outline: 4px auto rgba(255, 135, 0, 0.5);
+  outline: 4px auto rgba(255, 210, 150, 0.5);
 }
 
 .card {
@@ -72,13 +72,13 @@ button:focus-visible {
 @media (prefers-color-scheme: light) {
   :root {
     color: white;
-    background: linear-gradient(135deg, rgb(255, 62, 13) 0%, rgb(255, 135, 0) 100%);
+    background: linear-gradient(135deg, rgb(255, 180, 120) 0%, rgb(255, 210, 150) 100%);
   }
   a:hover {
-    color: #ff6200;
+    color: #ffcc99;
   }
   button {
-    background: linear-gradient(45deg, rgb(255, 62, 13), rgb(255, 135, 0));
+    background: linear-gradient(45deg, rgb(255, 180, 120), rgb(255, 210, 150));
     color: white;
   }
 }
