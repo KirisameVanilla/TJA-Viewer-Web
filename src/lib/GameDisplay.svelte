@@ -105,33 +105,40 @@
   .song-info {
     text-align: center;
     padding: 15px;
-    background: rgba(0, 0, 0, 0.3);
-    border-radius: 10px;
+    background: rgba(0, 0, 0, 0.4);
+    border: 2px solid rgba(255, 135, 0, 0.3);
+    border-radius: 15px;
+    box-shadow: 0 5px 20px rgba(255, 62, 13, 0.2);
   }
 
   .song-info h2 {
     margin: 0 0 10px 0;
-    color: #ffd700;
-    text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+    color: #fff;
+    text-shadow: 3px 3px 6px rgba(255, 62, 13, 0.8);
+    font-size: 1.8em;
+    font-weight: bold;
   }
 
   .song-info p {
     margin: 0;
-    color: white;
+    color: rgba(255, 255, 255, 0.9);
+    text-shadow: 1px 1px 3px rgba(0, 0, 0, 0.5);
   }
 
   .game-area {
-    background: #000022;
-    border: 3px solid #444;
-    border-radius: 10px;
-    padding: 10px;
+    background: linear-gradient(45deg, rgba(0, 0, 0, 0.6), rgba(20, 20, 20, 0.8));
+    border: 3px solid rgb(255, 135, 0);
+    border-radius: 15px;
+    padding: 15px;
     display: flex;
     justify-content: center;
+    box-shadow: 0 8px 25px rgba(255, 62, 13, 0.3), inset 0 2px 10px rgba(255, 135, 0, 0.1);
   }
 
   canvas {
-    border-radius: 5px;
-    background: #000011;
+    border-radius: 10px;
+    background: linear-gradient(135deg, rgba(0, 0, 0, 0.8), rgba(10, 10, 30, 0.9));
+    box-shadow: inset 0 0 20px rgba(0, 0, 0, 0.5);
   }
 
   .player-controls {
@@ -139,27 +146,30 @@
     align-items: center;
     gap: 20px;
     padding: 15px;
-    background: rgba(0, 0, 0, 0.3);
-    border-radius: 10px;
+    background: rgba(0, 0, 0, 0.4);
+    border: 2px solid rgba(255, 135, 0, 0.3);
+    border-radius: 15px;
     flex-wrap: wrap;
+    box-shadow: 0 5px 20px rgba(255, 62, 13, 0.2);
   }
 
   .play-btn {
     padding: 12px 24px;
     font-size: 16px;
     font-weight: bold;
-    background: linear-gradient(45deg, #ff6b6b, #feca57);
+    background: linear-gradient(45deg, rgb(255, 62, 13), rgb(255, 135, 0));
     color: white;
     border: none;
     border-radius: 25px;
     cursor: pointer;
     transition: all 0.3s ease;
-    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+    box-shadow: 0 4px 15px rgba(255, 62, 13, 0.3);
   }
 
   .play-btn:hover:not(:disabled) {
-    transform: translateY(-2px);
-    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
+    transform: translateY(-3px);
+    box-shadow: 0 8px 25px rgba(255, 62, 13, 0.4);
+    background: linear-gradient(45deg, rgb(255, 135, 0), rgb(255, 62, 13));
   }
 
   .play-btn:disabled {
@@ -173,37 +183,44 @@
     font-size: 18px;
     min-width: 120px;
     color: white;
+    text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.7);
   }
 
   .progress-bar {
     flex: 1;
     height: 8px;
-    background: rgba(255, 255, 255, 0.3);
-    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.2);
+    border: 1px solid rgba(255, 135, 0, 0.4);
+    border-radius: 5px;
     overflow: hidden;
     cursor: pointer;
     position: relative;
+    box-shadow: inset 0 2px 5px rgba(0, 0, 0, 0.3);
   }
 
   .progress-bar:hover {
     height: 10px;
-    background: rgba(255, 255, 255, 0.4);
+    background: rgba(255, 255, 255, 0.3);
+    border-color: rgb(255, 135, 0);
   }
 
   .progress-fill {
     height: 100%;
-    background: linear-gradient(90deg, #ff6b6b, #feca57, #48dbfb);
+    background: linear-gradient(90deg, rgb(255, 62, 13), rgb(255, 135, 0));
     border-radius: 4px;
     transition: width 0.1s ease;
+    box-shadow: 0 0 10px rgba(255, 62, 13, 0.5);
   }
 
   .status {
     text-align: center;
     padding: 10px;
     font-weight: bold;
-    background: rgba(0, 0, 0, 0.4);
-    border-radius: 5px;
+    background: rgba(0, 0, 0, 0.5);
+    border: 1px solid rgba(255, 135, 0, 0.4);
+    border-radius: 8px;
     color: white;
+    box-shadow: 0 3px 10px rgba(255, 62, 13, 0.2);
   }
 
   .hints {
@@ -217,25 +234,28 @@
     text-align: center;
     padding: 8px;
     font-size: 14px;
-    background: rgba(255, 215, 0, 0.2);
-    border-radius: 5px;
-    border: 1px solid rgba(255, 215, 0, 0.4);
+    background: rgba(255, 135, 0, 0.2);
+    border-radius: 8px;
+    border: 1px solid rgba(255, 135, 0, 0.4);
     color: white;
+    box-shadow: 0 2px 8px rgba(255, 62, 13, 0.15);
   }
 
   .game-hint {
-    background: rgba(72, 219, 251, 0.2);
-    border: 1px solid rgba(72, 219, 251, 0.4);
+    background: rgba(255, 62, 13, 0.2);
+    border: 1px solid rgba(255, 62, 13, 0.4);
   }
 
   .note-stats {
     text-align: center;
     padding: 10px;
     font-size: 14px;
-    opacity: 0.8;
-    background: rgba(0, 0, 0, 0.2);
-    border-radius: 5px;
+    opacity: 0.9;
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid rgba(255, 135, 0, 0.3);
+    border-radius: 8px;
     color: white;
+    box-shadow: 0 2px 8px rgba(255, 62, 13, 0.15);
   }
 
   @media (max-width: 768px) {
