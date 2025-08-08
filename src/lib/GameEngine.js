@@ -208,6 +208,7 @@ export class GameEngine {
     // 查找最近的普通音符
     let closestNote = null;
     let closestDistance = Infinity;
+    let hasNearbyNote = false; // 标记是否有附近的音符
     
     for (let note of tjaData.notes) {
       if (note.hasBeenJudged) continue;
@@ -218,9 +219,13 @@ export class GameEngine {
       
       const badWindow = 150;
       
-      if (timeDiff <= badWindow && timeDiff < closestDistance) {
+      // 检查是否有附近的音符（不管类型是否匹配）
+      if (timeDiff <= badWindow) {
+        hasNearbyNote = true;
+        
+        // 只有类型匹配的音符才能被击打
         const noteType = this.getNoteHitType(note.type);
-        if (noteType === hitType) {
+        if (noteType === hitType && timeDiff < closestDistance) {
           closestNote = note;
           closestDistance = timeDiff;
         }
@@ -247,10 +252,12 @@ export class GameEngine {
       const speed = 300 * this.noteSpeed;
       const x = this.calculateNotePosition(closestNote.time, currentTime, speed, tjaData);
       this.triggerHitEffect(closestNote, x, 100);
-    } else {
+    } else if (hasNearbyNote) {
+      // 只有当附近有音符但类型不匹配或时机不对时才算MISS
       this.gameState.updateScore("MISS");
       this.gameState.showJudgeText("MISS");
     }
+    // 如果附近没有任何音符，则什么都不做（不计算MISS）
   }
 
   // 检查连打是否可以击打
