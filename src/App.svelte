@@ -40,7 +40,7 @@
   let animationId = null;
 
   onMount(() => {
-    loadingStatus = "请通过 postMessage 发送 zip 包 URL";
+    loadingStatus = "请通过 postMessage 发送 zip 包 URL 或直接上传 zip 文件";
     
     function handleMsg(event) {
       if (event.data && typeof event.data === "object") {
@@ -94,6 +94,56 @@
     } catch (e) {
       loadingStatus = e.message;
     }
+  }
+
+  // 处理文件上传
+  async function handleFileUpload(event) {
+    const files = event.target.files;
+    if (!files || files.length === 0) return;
+
+    const file = files[0];
+    
+    // 检查文件类型
+    if (!file.name.toLowerCase().endsWith('.zip')) {
+      loadingStatus = "请选择 ZIP 格式的文件";
+      return;
+    }
+
+    try {
+      loadingStatus = "正在读取文件...";
+      
+      // 将文件转换为 Blob 并处理
+      const blob = new Blob([file], { type: file.type });
+      await loadZipFromBlob(blob);
+      
+      // 清空文件输入，允许重复选择同一文件
+      event.target.value = '';
+    } catch (e) {
+      loadingStatus = `上传失败: ${e.message}`;
+    }
+  }
+
+  // 重置文件选择
+  function handleReset() {
+    tjaFiles = [];
+    oggFiles = [];
+    selectedTja = "";
+    selectedOgg = "";
+    tjaCourses = [];
+    selectedCourse = "";
+    tjaData = null;
+    isLoaded = false;
+    loadingStatus = "请上传 ZIP 文件";
+    
+    // 停止播放
+    if (audioElement) {
+      audioElement.pause();
+      audioElement.currentTime = 0;
+    }
+    isPlaying = false;
+    currentTime = 0;
+    duration = 0;
+    stopAnimation();
   }
 
   // 按键处理
@@ -354,6 +404,7 @@
     bind:volume
     bind:noteSpeed
     onFileSelect={handleFileSelect}
+    onFileUpload={handleFileUpload}
     onCourseChange={handleCourseChange}
     onBranchChange={handleBranchChange}
     onTogglePlayMode={togglePlayMode}
@@ -384,7 +435,7 @@
     margin: 0 auto;
     padding: 20px;
     font-family: Arial, sans-serif;
-    background: linear-gradient(135deg, rgb(255, 62, 13) 0%, rgb(255, 135, 0) 100%);
+    background: linear-gradient(135deg, rgb(255, 180, 120) 0%, rgb(255, 210, 150) 100%);
     min-height: 100vh;
     color: white;
   }

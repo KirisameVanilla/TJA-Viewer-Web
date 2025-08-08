@@ -7,6 +7,7 @@
   export let selectedCourse = "";
   export let selectedBranch = "normal"; // 新增分支选择
   export let onFileSelect;
+  export let onFileUpload; // 新增文件上传回调
   export let onCourseChange;
   export let onBranchChange; // 新增分支切换回调
   export let isPlayMode = false;
@@ -15,11 +16,39 @@
   export let onVolumeChange;
   export let noteSpeed = 1.0;
   export let onSpeedChange;
+  export let uploadedFileName = ""; // 新增上传文件名变量
+
+  // 处理文件上传包装函数
+  function handleFileUpload(event) {
+    const files = event.target.files;
+    if (files && files.length > 0) {
+      uploadedFileName = files[0].name;
+    }
+    onFileUpload(event);
+  }
 </script>
 
 <div class="controls-panel">
-  <!-- 文件选择 -->
-  <div class="file-selection">
+  <!-- 文件上传 -->
+  <div class="file-upload">
+    <input
+      id="zip-upload"
+      type="file"
+      accept=".zip"
+      on:change={handleFileUpload}
+      style="display: none;"
+    />
+    <button 
+      class="upload-btn" 
+      on:click={() => document.getElementById('zip-upload').click()}
+    >
+      {uploadedFileName ? `已上传 ${uploadedFileName}` : '选择 ZIP 文件'}
+    </button>
+  </div>
+
+  <!-- 文件选择 - 只在有文件时显示 -->
+  {#if tjaFiles.length > 0 || oggFiles.length > 0}
+    <div class="file-selection">
     <label for="tja-select">选择谱面文件：</label>
     <select
       id="tja-select"
@@ -48,6 +77,7 @@
       加载
     </button>
   </div>
+  {/if}
 
   <!-- 难度选择 -->
   {#if tjaCourses.length > 1}
@@ -147,19 +177,19 @@
     padding: 12px 20px;
     font-size: 14px;
     font-weight: bold;
-    background: linear-gradient(45deg, rgb(255, 62, 13), rgb(255, 135, 0));
+    background: linear-gradient(45deg, rgb(255, 180, 120), rgb(255, 210, 150));
     color: white;
     border: none;
     border-radius: 25px;
     cursor: pointer;
     transition: all 0.3s ease;
-    box-shadow: 0 4px 15px rgba(255, 62, 13, 0.3);
+    box-shadow: 0 4px 15px rgba(255, 180, 120, 0.3);
   }
   
   .mode-btn:hover:not(:disabled) {
     transform: translateY(-2px);
-    box-shadow: 0 6px 20px rgba(255, 62, 13, 0.4);
-    background: linear-gradient(45deg, rgb(255, 135, 0), rgb(255, 62, 13));
+    box-shadow: 0 6px 20px rgba(255, 180, 120, 0.4);
+    background: linear-gradient(45deg, rgb(255, 210, 150), rgb(255, 180, 120));
   }
   
   .mode-btn:disabled {
@@ -190,21 +220,21 @@
     appearance: none;
     width: 16px;
     height: 16px;
-    background: linear-gradient(45deg, rgb(255, 62, 13), rgb(255, 135, 0));
+    background: linear-gradient(45deg, rgb(255, 180, 120), rgb(255, 210, 150));
     border-radius: 50%;
     cursor: pointer;
-    box-shadow: 0 2px 6px rgba(255, 62, 13, 0.3);
+    box-shadow: 0 2px 6px rgba(255, 180, 120, 0.3);
   }
 
   .volume-slider::-moz-range-thumb,
   .speed-slider::-moz-range-thumb {
     width: 16px;
     height: 16px;
-    background: linear-gradient(45deg, rgb(255, 62, 13), rgb(255, 135, 0));
+    background: linear-gradient(45deg, rgb(255, 180, 120), rgb(255, 210, 150));
     border-radius: 50%;
     border: none;
     cursor: pointer;
-    box-shadow: 0 2px 6px rgba(255, 62, 13, 0.3);
+    box-shadow: 0 2px 6px rgba(255, 180, 120, 0.3);
   }
 
   .speed-control {
@@ -245,19 +275,19 @@
 
   button {
     padding: 8px 16px;
-    background: linear-gradient(45deg, rgb(255, 62, 13), rgb(255, 135, 0));
+    background: linear-gradient(45deg, rgb(255, 180, 120), rgb(255, 210, 150));
     color: white;
     border: none;
     border-radius: 8px;
     cursor: pointer;
     transition: all 0.3s ease;
-    box-shadow: 0 3px 10px rgba(255, 62, 13, 0.3);
+    box-shadow: 0 3px 10px rgba(255, 180, 120, 0.3);
   }
 
   button:hover:not(:disabled) {
     transform: translateY(-2px);
-    box-shadow: 0 6px 15px rgba(255, 62, 13, 0.4);
-    background: linear-gradient(45deg, rgb(255, 135, 0), rgb(255, 62, 13));
+    box-shadow: 0 6px 15px rgba(255, 180, 120, 0.4);
+    background: linear-gradient(45deg, rgb(255, 210, 150), rgb(255, 180, 120));
   }
 
   button:disabled {
@@ -272,11 +302,40 @@
     font-weight: bold;
   }
 
+  /* 文件上传样式 */
+  .file-upload {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 20px;
+  }
+
+  .upload-btn {
+    padding: 12px 24px;
+    border: 2px solid rgba(255, 255, 255, 0.3);
+    border-radius: 25px;
+    background: rgba(0, 0, 0, 0.2);
+    color: white;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    font-size: 14px;
+    font-weight: bold;
+    min-width: 200px;
+    text-align: center;
+  }
+
+  .upload-btn:hover {
+    background: rgba(0, 0, 0, 0.3);
+    border-color: rgb(255, 210, 150);
+    transform: translateY(-2px);
+  }
+
   @media (max-width: 768px) {
     .controls-panel {
       padding: 15px;
     }
     
+    .file-upload,
     .file-selection,
     .course-selection,
     .branch-selection,
@@ -284,6 +343,10 @@
       flex-direction: column;
       align-items: stretch;
       gap: 10px;
+    }
+    
+    .file-upload {
+      align-items: flex-start;
     }
     
     .speed-control {
